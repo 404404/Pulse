@@ -474,6 +474,25 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                     .disabled(!settings.isPanelVisible)
                 }
+
+                SettingsRowDivider()
+
+                SettingsRow(
+                    String.localized("Turn red at"),
+                    subtitle: String.localized("Where a ring stops being amber. A spent limit is red whatever this says.")
+                ) {
+                    Picker(String.localized("Turn red at"), selection: Binding(
+                        get: { settings.warningThreshold },
+                        set: { settings.warningThreshold = $0 }
+                    )) {
+                        ForEach(WarningThreshold.allCases) { threshold in
+                            Text(threshold.title).tag(threshold)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: SettingsLayout.controlWidth, alignment: .trailing)
+                    .disabled(!settings.isPanelVisible)
+                }
             }
 
             SettingsGroup(String.localized("Notifications")) {
