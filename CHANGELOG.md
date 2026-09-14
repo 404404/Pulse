@@ -7,9 +7,23 @@ shows in the update window — see [Scripts/changelog.py](Scripts/changelog.py).
 Add the entry **before** tagging, in the small grammar the converter knows:
 bullets, `**bold**`, `` `code` `` and `[links](https://example.com)`.
 
-## Unreleased
+## 1.1.1
 
-- **Devin is the eighteenth provider**, and the first one Pulse reads out of another app's own saved state rather than from a reply. There is nothing to enter: `Devin.app` is the renamed Windsurf editor, so it keeps its state in a VS Code-style SQLite file, and the plan it last read from your account is one row in it. Devin reports the daily and the weekly quota itself, with both resets — nothing here is inferred. **One caveat, and the card says it out loud**: that row is written when Devin *starts*, not while it runs, so a reading is stamped with the app's last launch and ages from there. Free plans show the message pool instead, which is what they report. **Live figures need nothing from you either**: if you are signed in to app.devin.ai in Chrome, Edge, Brave, Vivaldi or Arc, Pulse reads that session and asks Devin directly, falling back to the saved plan when it cannot. Unlike a cookie, browser storage is not encrypted, so there is no keychain prompt — and which browser to read is yours to pick in Devin's settings.
+- **Devin is the eighteenth provider.** Pulse reads its reported daily and weekly quota using your Chromium browser session, with no keychain prompt. Without a session or pasted credential, it reads the plan Devin's own app saved at launch; free plans show their message allowance instead. Older snapshots carry an "as of" date, expired windows disappear, and snapshots older than a day are refused. Browser and desktop readings stay separate so one account's or organization's quota cannot stand in for another's.
+
+- **Token spend brings your agents' work together.** A new Settings pane adds up the local history of Claude Code, Codex, OpenCode, Kilo CLI, Grok Build, Kimi CLI and Devin CLI. Choose today, the last 7, 30 or 90 days, or all time; inspect the split by agent, model, project, session and token kind. Money is the same work priced at published API rates, not your subscription bill, and models without a published price are counted but not costed.
+
+- **Spending keeps the right dates and names.** A conversation resumed across midnight contributes only its in-range work to the selected span, so project and session figures agree with the total. Saved ledgers notice changes in nested logs and database journals, and model aliases resolve the names agents actually write. The latest custom Claude Code session title takes precedence over the opening prompt.
+
+- **Developer integrations are ready to export.** Settings includes a Raycast extension and scripts for tmux, sketchybar and shell prompts. They read the cache through `Pulse --json`, retaining reading age and inferred-value marks. Account links open the right settings pane directly; JSON now includes each saved reading's actual source and its account link. See the [setup guide](https://github.com/qunqin24/Pulse/blob/main/Docs/integrations.md).
+
+- **Connection diagnostics explain the reading on screen.** Each account shows its latest check, actual source, cache use and route outcomes, with a relevant next step when something needs attention. Added accounts can be signed in again in their existing slot, keeping their label and preferences. Copied diagnostics contain source, status and timestamps without account details or credentials.
+
+- **Choose where a ring turns red.** The new "Turn red at" setting offers thresholds from 60% to 90%, with 75% as the default. Rings, detail bars and the collapsed rail use the same threshold. A limit the provider declares spent still takes precedence, while Claude Code's warning severity no longer falsely marks a limit as exhausted.
+
+- **A sign-in stays with its provider.** Its device code, Cancel button and error appear on that provider's panes, while other added-account sign-ins wait for it to finish. Completing a browser or GitHub login after switching panes no longer overwrites another provider's credential field.
+
+- **Detail cards stay beside their rings as they open and close.** The reveal anchor accounts for the card's position along the rail, correcting the drift that affected cards farther down the panel. Devin's changing figures also participate in adaptive refresh, and malformed browser-storage lengths are rejected without crashing Pulse.
 
 ## 1.1.0
 
