@@ -131,6 +131,16 @@ struct UsageLedger: Sendable, Equatable {
         let end: Date
         let tokens: Int
         let cost: Double
+        /// The session's own quarter-hour buckets, priced — the same ones the
+        /// day totals are folded from.
+        ///
+        /// **A conversation is not one indivisible number.** A session
+        /// resumed across midnight, or over days, has work on more than one
+        /// calendar day; without this detail a span can only take it whole or
+        /// drop it, and a project's total then disagrees with the span's own.
+        /// Empty for a ledger read before sessions kept their buckets, where
+        /// the readers fall back to counting the session whole.
+        var slots: [Slot] = []
     }
 
     static let empty = UsageLedger(
@@ -239,6 +249,24 @@ actor UsageLedgerReader {
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter
     }()
+
+    /// Turns a reader's running `slotKey` totals into the sorted, priced
+    /// buckets a session carries.
+    ///
+    /// Shared by the readers that take their counts from a database, so a
+    /// session's own detail is cut — and can be windowed — the same way the
+    /// day totals are. The key is the one `slotKey(for:)` produced.
+    nonisolated static func sessionSlots(
+        _ totals: [String: (tokens: Int, cost: Double)]
+    ) -> [UsageLedger.Slot] {
+        totals
+            .compactMap { key, value in
+                sharedSlotFormatter.date(from: key).map {
+                    UsageLedger.Slot(start: $0, tokens: value.tokens, cost: value.cost)
+                }
+            }
+            .sorted { $0.start < $1.start }
+    }
 
     nonisolated static func price(
         _ buckets: [String: [String: TokenTally]],
@@ -391,16 +419,25 @@ actor UsageLedgerReader {
             var cost = 0.0
             var start: Date?
             var end: Date?
+            var slots: [UsageLedger.Slot] = []
 
             for (key, models) in entry.days {
                 guard let at = slotFormatter.date(from: key) else { continue }
                 start = min(start ?? at, at)
                 end = max(end ?? at, at)
 
+                var slotTokens = 0
+                var slotCost = 0.0
                 for (model, tally) in models {
                     tokens += tally.total
-                    if let price = ModelPrices.price(for: model, in: prices) { cost += tally.cost(at: price) }
+                    slotTokens += tally.total
+                    if let price = ModelPrices.price(for: model, in: prices) {
+                        let money = tally.cost(at: price)
+                        cost += money
+                        slotCost += money
+                    }
                 }
+                slots.append(.init(start: at, tokens: slotTokens, cost: slotCost))
             }
 
             guard tokens > 0, let start, let end else { continue }
@@ -416,7 +453,8 @@ actor UsageLedgerReader {
                     start: start,
                     end: end,
                     tokens: tokens,
-                    cost: cost
+                    cost: cost,
+                    slots: slots.sorted { $0.start < $1.start }
                 )
             )
         }
@@ -469,7 +507,10 @@ actor UsageLedgerReader {
     /// Both come out of the same pass and are cached with it. Reading them
     /// later would mean opening every file again — a few hundred megabytes for
     /// two short strings.
-    struct Scanned: Codable {
+    // `Sendable` because the internal `parseClaudeCode` is reached across the
+    // actor's boundary by its test, and Swift 6 will not hand a non-`Sendable`
+    // value out.
+    struct Scanned: Codable, Sendable {
         var days: [String: [String: TokenTally]] = [:]
         /// The conversation's own name, where the CLI keeps one.
         var title: String?
@@ -521,7 +562,12 @@ actor UsageLedgerReader {
 
     /// Claude Code writes one JSON object per message, each assistant reply
     /// carrying the token counts for the request that produced it.
-    private func parseClaudeCode(_ data: Data) -> Scanned {
+    ///
+    /// **Internal rather than `private` so a test can drive the real parser**
+    /// over a transcript it builds by hand, without reading the user's own
+    /// `~/.claude` ([Docs/testing.md](../../Docs/testing.md) allows this when
+    /// the comment says so — do not tidy it back). It changes no token count.
+    func parseClaudeCode(_ data: Data) -> Scanned {
         var scanned = Scanned()
         var days: [String: [String: TokenTally]] = [:]
         // Retries and resumed sessions can write the same reply twice; the
@@ -530,26 +576,32 @@ actor UsageLedgerReader {
         var seen: Set<String> = []
 
         for line in data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true) {
-            // What the session is called and where it ran. Both are cheap
-            // substring tests first, so the ordinary line is never parsed
-            // twice.
-            if scanned.title == nil || scanned.cwd == nil {
-                if contains(line, "\"customTitle\"") || contains(line, "\"cwd\"") {
-                    if let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
-                        if scanned.cwd == nil, let cwd = root["cwd"] as? String, !cwd.isEmpty {
-                            scanned.cwd = cwd
-                        }
-                        // A title the user set outranks the opening prompt.
-                        if let custom = root["customTitle"] as? String, let title = Self.title(from: custom) {
-                            scanned.title = title
-                        } else if scanned.title == nil,
-                                  root["type"] as? String == "user",
-                                  root["isSidechain"] as? Bool != true,
-                                  let message = root["message"] as? [String: Any],
-                                  let text = Self.text(in: message["content"]),
-                                  let title = Self.title(from: text) {
-                            scanned.title = title
-                        }
+            // What the session is called and where it ran. **A user-set title
+            // can arrive long after the opening prompt** — Claude Code writes
+            // `customTitle` when the conversation is renamed — so that one is
+            // looked for on every line and the last valid one wins. `cwd` and
+            // the opening prompt are only needed once each, which keeps the
+            // ordinary line from being parsed twice.
+            let renamed = contains(line, "\"customTitle\"")
+            if renamed || scanned.title == nil || scanned.cwd == nil {
+                if let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
+                    if scanned.cwd == nil, let cwd = root["cwd"] as? String, !cwd.isEmpty {
+                        scanned.cwd = cwd
+                    }
+                    // The user's own name outranks the opening prompt, and a
+                    // later rename outranks an earlier one. An unreadable
+                    // custom title (empty, or an envelope) leaves the title
+                    // that was already found rather than clearing it.
+                    if renamed, let custom = root["customTitle"] as? String,
+                       let title = Self.title(from: custom) {
+                        scanned.title = title
+                    } else if scanned.title == nil,
+                              root["type"] as? String == "user",
+                              root["isSidechain"] as? Bool != true,
+                              let message = root["message"] as? [String: Any],
+                              let text = Self.text(in: message["content"]),
+                              let title = Self.title(from: text) {
+                        scanned.title = title
                     }
                 }
             }
@@ -756,11 +808,18 @@ private struct FileCache: Codable {
         // The `2` is the bucket format. Quarter-hours replaced whole days, and
         // an old file's keys would parse as nothing at all — silently, which
         // is the worst way for a cache to be wrong.
-        // **The number is part of the contract.** Entries now carry a title
-        // and a working directory; a cache written by an earlier build still
-        // decodes, and would then hand back every session unnamed for ever,
-        // because a file that has not changed is never read again. Renaming
-        // the file is what forces the one rescan that fills them in.
-        PulseStorage.directory.appending(path: "ledger-3-\(provider.rawValue).json")
+        // **The number is part of the contract.** `ledger-2` became `ledger-3`
+        // when entries gained a title and a working directory; a cache written
+        // by an earlier build still decodes, and would then hand back every
+        // session unnamed for ever, because a file that has not changed is
+        // never read again.
+        //
+        // **`ledger-3` became `ledger-4` because its titles are wrong.** The
+        // parser that wrote them stopped looking for `customTitle` once a
+        // session had a `cwd` and an opening prompt, so every rename made
+        // after that was dropped — and a transcript that has not changed is
+        // never opened again, so the fix to the parser alone could not reach
+        // them. Renaming the file forces the one rescan that rereads them.
+        PulseStorage.directory.appending(path: "ledger-4-\(provider.rawValue).json")
     }
 }

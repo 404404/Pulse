@@ -100,7 +100,7 @@ body:
       placeholder: |
         1.
         2.
-        Every refresh / happened once: 
+        Every refresh / happened once:
     validations:
       required: false
 

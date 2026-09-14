@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SQLite3
 
@@ -16,15 +17,14 @@ actor AgentLedgers {
 
     private var cached: [SpendAgent: UsageLedger] = [:]
 
-    /// What each agent's store looked like when it was last read, so a
+    /// What each agent's store really looked like when it was last read, so a
     /// relaunch does not repeat the work.
     ///
     /// **The in-memory cache is not enough.** It answers for the life of the
     /// process; the page is opened once a day for a minute, and a cold read of
-    /// a ten-thousand-row database is the whole of that minute. The stores
-    /// here are appended to rather than rewritten, so size and modification
-    /// date settle whether anything changed — the same test
-    /// `UsageLedgerReader` makes of a transcript.
+    /// a ten-thousand-row database is the whole of that minute. The stamp is
+    /// computed from the store's own inputs — see `AgentCache.Stamp` for why
+    /// the store's size and date are not one of them.
     private var stamps: [SpendAgent: AgentCache.Stamp] = [:]
 
     func ledgers(refresh: Bool = false) async -> [SpendAgent: UsageLedger] {
@@ -42,15 +42,26 @@ actor AgentLedgers {
                 ledger = await UsageLedgerReader.shared.ledger(for: provider, refresh: refresh)
             } else {
                 let prices = await ModelPrices.shared.prices()
-                let stamp = agent.store.flatMap(AgentCache.Stamp.init)
+                let before = agent.store.map { AgentCache.stamp(for: $0, prices: prices) }
 
-                if !refresh, let stamp, let saved = AgentCache.load(agent), saved.stamp == stamp {
+                if !refresh, let before, let saved = AgentCache.load(agent), saved.stamp == before {
                     ledger = saved.ledger
                 } else {
                     ledger = Self.read(agent, prices: prices)
-                    if let stamp { AgentCache.save(ledger, stamp: stamp, for: agent) }
+
+                    // **Confirm the read left the store where it found it.**
+                    // A store appended to while Pulse was reading it produces
+                    // a ledger the *before* stamp no longer describes. Only a
+                    // stable read is worth persisting. When the two differ the ledger
+                    // is kept for this process only and no disk cache is
+                    // claimed for it — no retry loop, just an honest miss next
+                    // time.
+                    let after = agent.store.map { AgentCache.stamp(for: $0, prices: prices) }
+                    if let before, let after, after == before {
+                        AgentCache.save(ledger, stamp: before, for: agent)
+                    }
                 }
-                stamps[agent] = stamp
+                stamps[agent] = before
             }
 
             cached[agent] = ledger
@@ -112,6 +123,10 @@ enum OpenCodeStore {
 
         var buckets: [String: [String: TokenTally]] = [:]
         var perSession: [String: (tally: TokenTally, cost: Double, start: Date, end: Date)] = [:]
+        // A session resumed across days is several quarter-hours, and the
+        // project totals need to be able to count only the ones inside the
+        // span on screen.
+        var sessionSlots: [String: [String: (tokens: Int, cost: Double)]] = [:]
         let calendar = Calendar.current
 
         Self.each(handle, "SELECT session_id, data FROM message") { statement in
@@ -143,6 +158,11 @@ enum OpenCodeStore {
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
+            var slot = sessionSlots[session, default: [:]][key] ?? (tokens: 0, cost: 0)
+            slot.tokens += tally.total
+            slot.cost += cost
+            sessionSlots[session, default: [:]][key] = slot
+
             if var running = perSession[session] {
                 running.tally = running.tally + tally
                 running.cost += cost
@@ -168,7 +188,8 @@ enum OpenCodeStore {
                     start: totals.start,
                     end: totals.end,
                     tokens: totals.tally.total,
-                    cost: totals.cost
+                    cost: totals.cost,
+                    slots: UsageLedgerReader.sessionSlots(sessionSlots[id] ?? [:])
                 )
             }
             .sorted { $0.end > $1.end }
@@ -232,23 +253,120 @@ enum OpenCodeStore {
 /// **The whole ledger rather than its inputs.** `UsageLedgerReader` caches
 /// per-file token counts and prices them afresh each time, because a price
 /// change should not mean rescanning hundreds of megabytes. These stores are
-/// single files whose whole contents are re-read or not at all, so there is
-/// nothing finer to cache — and a price change is picked up the next time the
-/// store is appended to, which for an agent in use is the same day.
+/// read from several places rather than file-by-file, so the cache keeps the
+/// finished ledger — and its validity is settled by the store's real inputs
+/// and the price table, not by the store root's own size and date.
 enum AgentCache {
+    /// Whether the store's real inputs, and the money behind its cost, are
+    /// the same as when the ledger was kept.
+    ///
+    /// **Not the store's own size and date.** Half these stores are
+    /// directories — Grok's sessions and Kimi's — and appending a line to a
+    /// log inside one leaves the directory's own stamp untouched, so a
+    /// machine could go a week without noticing. The databases have the
+    /// mirror-image problem: SQLite writes the WAL, and the `.db` file only
+    /// moves when a checkpoint happens, so a restart read a stale disk cache
+    /// too.
     struct Stamp: Codable, Equatable {
-        let size: Int
-        let modified: Date
+        /// A digest of every file the ledger was read out of. For a directory
+        /// store that is a recursive walk of its logs and their title files,
+        /// by path, size and modification date; for a database it is the
+        /// `.db` plus the `-wal` and `-journal` beside it.
+        let source: String
+        /// A digest of the price table. Money is part of what is kept, so a
+        /// table that changed has to invalidate it — including the empty
+        /// table an offline first run would otherwise freeze at $0.00 for
+        /// ever, since an unchanged store would never be read again.
+        let prices: String
+    }
 
-        init?(_ file: URL) {
-            guard
-                let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
-                let size = values.fileSize,
-                let modified = values.contentModificationDate
-            else { return nil }
-            self.size = size
-            self.modified = modified
+    /// The stamp a store and the price table produce *now*.
+    ///
+    /// Internal rather than private so a test can hold it. The fingerprint is
+    /// deliberately taken from the inputs and never from the contents the
+    /// readers derive: reading a store must not change its own stamp, or
+    /// every read would invalidate the cache it just filled.
+    static func stamp(for store: URL, prices: [String: ModelPrice]) -> Stamp {
+        Stamp(source: sourceFingerprint(of: store), prices: priceFingerprint(prices))
+    }
+
+    /// A digest of the files a store is read out of.
+    ///
+    /// For a directory, every regular file beneath it, recursively, so
+    /// **adding, removing or changing a log — or the `state.json` a title
+    /// sits in — moves the digest**. For a file, that file and SQLite's
+    /// sidecars. `-shm` is left out on purpose: it is shared memory rather
+    /// than data, and merely opening the store can touch it, which would make
+    /// a read invalidate the cache it was about to validate.
+    static func sourceFingerprint(of store: URL) -> String {
+        let manager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: store.path, isDirectory: &isDirectory) else {
+            return digest("missing")
         }
+
+        var lines: [String] = []
+
+        if isDirectory.boolValue {
+            let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
+            if let walker = manager.enumerator(
+                at: store,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) {
+                for case let file as URL in walker {
+                    guard
+                        let values = try? file.resourceValues(forKeys: Set(keys)),
+                        values.isRegularFile == true
+                    else { continue }
+                    lines.append(Self.line(file.path, values.fileSize ?? 0, values.contentModificationDate))
+                }
+            }
+        } else {
+            // `""` is the database itself; the sidecars are where SQLite keeps
+            // what it has not folded in yet. A missing one is simply absent.
+            for suffix in ["", "-wal", "-journal"] {
+                let url = URL(fileURLWithPath: store.path + suffix)
+                guard
+                    let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+                    let size = values.fileSize
+                else { continue }
+                lines.append(Self.line(url.lastPathComponent, size, values.contentModificationDate))
+            }
+        }
+
+        // Sorted so the enumerator's order cannot make one unchanged store
+        // look like two different ones.
+        lines.sort()
+        return digest(lines.joined(separator: "\n"))
+    }
+
+    /// A digest of the price table's rates and names.
+    ///
+    /// Content, not the file's date: a daily refresh that fetched the same
+    /// table must not throw away every agent's cached ledger, and a table
+    /// with even one changed rate — or a renamed model — must.
+    static func priceFingerprint(_ prices: [String: ModelPrice]) -> String {
+        guard !prices.isEmpty else { return "empty" }
+
+        let canonical = prices.keys.sorted().map { id -> String in
+            let price = prices[id]!
+            let cacheRead = price.cacheRead.map { String($0) } ?? "-"
+            let cacheWrite = price.cacheWrite.map { String($0) } ?? "-"
+            let name = price.name ?? "-"
+            return "\(id)\t\(price.input)\t\(price.output)\t\(cacheRead)\t\(cacheWrite)\t\(name)"
+        }
+        return digest(canonical.joined(separator: "\n"))
+    }
+
+    private static func line(_ path: String, _ size: Int, _ modified: Date?) -> String {
+        "\(path)\t\(size)\t\(modified?.timeIntervalSince1970 ?? 0)"
+    }
+
+    private static func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8))
+            .map { String(format: "%02x", Int($0)) }
+            .joined()
     }
 
     struct Saved: Codable {
@@ -291,6 +409,11 @@ enum AgentCache {
         let end: Date
         let tokens: Int
         let cost: Double
+        /// **Required, not defaulted.** A cache written before sessions
+        /// carried their buckets would otherwise decode with none, leaving
+        /// project totals unable to respect the selected span. Missing it has to
+        /// fail the decode so the store is read again.
+        let slots: [StoredSlot]
     }
 
     static func load(_ agent: SpendAgent) -> (stamp: Stamp, ledger: UsageLedger)? {
@@ -314,7 +437,8 @@ enum AgentCache {
         ledger.sessions = saved.ledger.sessions.map {
             .init(
                 id: $0.id, name: $0.name, title: $0.title, project: $0.project,
-                start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost
+                start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost,
+                slots: $0.slots.map { .init(start: $0.start, tokens: $0.tokens, cost: $0.cost) }
             )
         }
         return (saved.stamp, ledger)
@@ -331,7 +455,8 @@ enum AgentCache {
             sessions: ledger.sessions.map {
                 StoredSession(
                     id: $0.id, name: $0.name, title: $0.title, project: $0.project,
-                    start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost
+                    start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost,
+                    slots: $0.slots.map { StoredSlot(start: $0.start, tokens: $0.tokens, cost: $0.cost) }
                 )
             },
             unpricedModels: ledger.unpricedModels,
@@ -344,7 +469,11 @@ enum AgentCache {
     }
 
     private static func file(for agent: SpendAgent) -> URL {
-        PulseStorage.directory.appending(path: "agent-1-\(agent.rawValue).json")
+        // **The number is the stored shape.** A `1` has a store-shaped stamp
+        // and sessions without buckets; both decode differently now, and a
+        // session missing its buckets cannot be counted within a span.
+        // Renaming forces the one rescan that fills them in.
+        PulseStorage.directory.appending(path: "agent-2-\(agent.rawValue).json")
     }
 }
 
@@ -395,6 +524,7 @@ enum GrokStore {
                 var first: Date?
                 var last: Date?
                 var title: String?
+                var runSlots: [String: (tokens: Int, cost: Double)] = [:]
 
                 for line in data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true) {
                     guard let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
@@ -432,9 +562,15 @@ enum GrokStore {
                         )
                         guard tally.total > 0 else { continue }
 
+                        let money = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
                         buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
                         tokens += tally.total
-                        cost += ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
+                        cost += money
+
+                        var slot = runSlots[key] ?? (tokens: 0, cost: 0)
+                        slot.tokens += tally.total
+                        slot.cost += money
+                        runSlots[key] = slot
                     }
                 }
 
@@ -442,7 +578,8 @@ enum GrokStore {
                 sessions.append(
                     UsageLedger.Session(
                         id: file.path, name: run.lastPathComponent, title: title,
-                        project: project, start: first, end: last, tokens: tokens, cost: cost
+                        project: project, start: first, end: last, tokens: tokens, cost: cost,
+                        slots: UsageLedgerReader.sessionSlots(runSlots)
                     )
                 )
             }
@@ -492,6 +629,7 @@ enum KimiCLIStore {
             var cost = 0.0
             var first: Date?
             var last: Date?
+            var sessionSlots: [String: (tokens: Int, cost: Double)] = [:]
             let model = "kimi (unnamed)"
 
             for line in data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true) {
@@ -520,9 +658,15 @@ enum KimiCLIStore {
                 last = max(last ?? at, at)
 
                 let key = UsageLedgerReader.slotKey(for: at)
+                let money = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
                 buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
                 tokens += tally.total
-                cost += ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
+                cost += money
+
+                var slot = sessionSlots[key] ?? (tokens: 0, cost: 0)
+                slot.tokens += tally.total
+                slot.cost += money
+                sessionSlots[key] = slot
             }
 
             guard tokens > 0, let first, let last else { continue }
@@ -534,7 +678,8 @@ enum KimiCLIStore {
                     // wire log. Neither carries a working directory.
                     title: Self.title(besideWire: file),
                     project: nil,
-                    start: first, end: last, tokens: tokens, cost: cost
+                    start: first, end: last, tokens: tokens, cost: cost,
+                    slots: UsageLedgerReader.sessionSlots(sessionSlots)
                 )
             )
         }
@@ -595,6 +740,7 @@ enum DevinCLIStore {
 
         var buckets: [String: [String: TokenTally]] = [:]
         var perSession: [String: (tokens: Int, cost: Double, start: Date, end: Date)] = [:]
+        var sessionSlots: [String: [String: (tokens: Int, cost: Double)]] = [:]
 
         Self.each(handle, "SELECT session_id, chat_message, created_at FROM message_nodes") { statement in
             guard
@@ -629,6 +775,12 @@ enum DevinCLIStore {
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
             let cost = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
+
+            var slot = sessionSlots[session, default: [:]][key] ?? (tokens: 0, cost: 0)
+            slot.tokens += tally.total
+            slot.cost += cost
+            sessionSlots[session, default: [:]][key] = slot
+
             if var running = perSession[session] {
                 running.tokens += tally.total
                 running.cost += cost
@@ -653,7 +805,8 @@ enum DevinCLIStore {
                 start: totals.start,
                 end: totals.end,
                 tokens: totals.tokens,
-                cost: totals.cost
+                cost: totals.cost,
+                slots: UsageLedgerReader.sessionSlots(sessionSlots[id] ?? [:])
             )
         }
         .sorted { $0.end > $1.end }

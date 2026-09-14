@@ -89,7 +89,7 @@ Pulse shows the figures each service reports. It never guesses percentages from 
 | **Volcengine** | `arkcli` login, else a pasted access-key pair (signed Top OpenAPI) | Ark Coding & Agent plans; on automatic it prefers pasted keys over the CLI |
 | **Command Code** | Pasted key, else the login `cmd auth login` already saved | Credit balance in dollars; monthly plan row marked **estimated** |
 | **DeepSeek** | Pasted key; documented `GET /user/balance` | Prepaid balance only — no allowance; you pick what the ring measures against |
-| **Devin** | Nothing to enter — reads your browser session, no keychain prompt | Daily and weekly quota, both reported by Devin. Falls back to the plan Devin's own app saved, which the card dates ([Docs/providers/devin.md](Docs/providers/devin.md)) |
+| **Devin** | Nothing to enter — reads your browser session, no keychain prompt | Daily and weekly quota reported by Devin. With no browser session or pasted credential, reads the app's dated saved plan. Endpoint failures use only matching endpoint cache, preserving account and organization boundaries ([Docs/providers/devin.md](Docs/providers/devin.md)) |
 
 ---
 

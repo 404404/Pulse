@@ -35,12 +35,9 @@ import Foundation
 /// table's entries lose to the log's — and a manifest parser is a second
 /// format to get wrong for a case the ordering already handles.
 ///
-/// **CRCs are deliberately not checked.** Every record and every block carries
-/// one, and verifying them means carrying a CRC-32C implementation for a
-/// failure mode this reader cannot be hurt by: a mis-framed record yields
-/// garbage bytes, and garbage bytes do not begin with `_https://app.devin.ai`.
-/// Only entries whose key matches the origin being asked for are ever
-/// returned, so corruption is dropped by the filter rather than by a checksum.
+/// **CRCs are not checked.** Bounds checks reject malformed framing and
+/// lengths; the origin filter restricts which keys may be returned. These
+/// checks are not a checksum validation of the record's contents.
 ///
 /// **The browser is not asked to stop.** LevelDB files are append-only or
 /// immutable, so reading one under a running browser gets a consistent
@@ -206,10 +203,15 @@ enum LevelDB {
     /// ends it. A zero-type header is the padding at the end of a block.
     static func log(_ bytes: [UInt8], keyPrefix: [UInt8]? = nil) -> [Entry] {
         var entries: [Entry] = []
-        var pending: [UInt8] = []
+        // Nil is "no chain has begun"; an empty array is "a first fragment
+        // began with no bytes". The two are not the same — see case 2 below.
+        var pending: [UInt8]?
         var offset = 0
 
-        while offset + headerSize <= bytes.count {
+        // `offset` can step past the end when a tail of a block is padding, so
+        // the bound is written as a subtraction: `offset + headerSize` would
+        // overflow for an offset an enormous file could plausibly reach.
+        while offset <= bytes.count, bytes.count - offset >= headerSize {
             // Fewer than seven bytes left in this block is padding by
             // definition — there is no room for another header.
             let room = blockSize - (offset % blockSize)
@@ -228,25 +230,42 @@ enum LevelDB {
             // dropped everything written after the first padded block, which
             // in a live profile is most of the log.
             if type == 0 {
-                offset += blockSize - (offset % blockSize)
+                offset += room
                 continue
             }
-            guard start + length <= bytes.count else { break }
+
+            // **A record never crosses a 32KB block.** A length that reaches
+            // past the block's end is a header read at the wrong place, and
+            // following it would frame the rest of the file against a bad
+            // offset. Both tests are remainders so a length near `Int.max`
+            // fails here instead of overflowing the sum.
+            guard length <= room - headerSize, length <= bytes.count - start else { break }
 
             let payload = Array(bytes[start..<(start + length)])
             offset = start + length
 
             switch type {
             case 1:
+                // A whole record discards a fragment chain that never ended:
+                // the half-write is not a record and must not be joined to it.
+                pending = nil
                 entries += batch(payload, keyPrefix: keyPrefix)
             case 2:
+                // A first fragment may legitimately be empty. When a block has
+                // exactly the seven bytes a header needs left, Chromium writes
+                // a zero-length FIRST there and the batch in the next block, so
+                // "started" cannot be tested as "has bytes yet".
                 pending = payload
-            case 3:
-                pending += payload
-            case 4:
-                pending += payload
-                entries += batch(pending, keyPrefix: keyPrefix)
-                pending = []
+            case 3, 4:
+                // A continuation with nothing to continue is not a record.
+                // Append in place: unwrapping into a second mutable array
+                // would copy the growing chain on every 32KB fragment.
+                guard pending != nil else { break }
+                pending?.append(contentsOf: payload)
+                if type == 4, let complete = pending {
+                    entries += batch(complete, keyPrefix: keyPrefix)
+                    pending = nil
+                }
             default:
                 // A type this reader does not know is a format that has moved
                 // on. Stopping is right: carrying on would frame the rest of
@@ -261,6 +280,14 @@ enum LevelDB {
     /// A batch is an 8-byte sequence, a 4-byte count, and then that many
     /// records. Each record's own sequence is the batch's plus its position,
     /// which is what makes two writes to one key orderable.
+    ///
+    /// **A batch is atomic.** Every length that comes off the wire is a
+    /// `UInt64` that may not fit an `Int` (a corrupt one can be `UInt64.max`),
+    /// and every range is bounded by the bytes that remain rather than by an
+    /// offset-plus-length sum that a huge value would overflow. A record whose
+    /// key or value will not parse drops the *whole* batch rather than the
+    /// tail of it: a truncated write half-applied is not a credential, and
+    /// reparsing the remains against a wrong offset could name another origin.
     private static func batch(_ bytes: [UInt8], keyPrefix: [UInt8]?) -> [Entry] {
         guard bytes.count >= 12 else { return [] }
 
@@ -273,7 +300,7 @@ enum LevelDB {
         var entries: [Entry] = []
         var offset = 12
         for index in 0..<Int(count) {
-            guard offset < bytes.count else { break }
+            guard offset < bytes.count else { return [] }
             let kind = bytes[offset]
             offset += 1
 
@@ -281,9 +308,10 @@ enum LevelDB {
             // log is megabytes of other sites' storage; building an array for
             // every key and every value on the way past was most of the time
             // this reader spent.
-            guard let keyLength = varint(bytes, &offset).map(Int.init),
-                  offset + keyLength <= bytes.count
-            else { break }
+            guard let rawKeyLength = varint(bytes, &offset),
+                  let keyLength = Int(exactly: rawKeyLength),
+                  keyLength <= bytes.count - offset
+            else { return [] }
             let keyStart = offset
             offset += keyLength
 
@@ -294,9 +322,10 @@ enum LevelDB {
 
             switch kind {
             case 1:
-                guard let valueLength = varint(bytes, &offset).map(Int.init),
-                      offset + valueLength <= bytes.count
-                else { return entries }
+                guard let rawValueLength = varint(bytes, &offset),
+                      let valueLength = Int(exactly: rawValueLength),
+                      valueLength <= bytes.count - offset
+                else { return [] }
                 let valueStart = offset
                 offset += valueLength
                 guard wanted else { continue }
@@ -313,9 +342,13 @@ enum LevelDB {
                     sequence: sequence &+ UInt64(index)
                 ))
             default:
-                return entries
+                return []
             }
         }
+        // The count and the payload have to agree: bytes left after the last
+        // claimed record are a write the header did not account for, and must
+        // not be ignored as though the batch were complete.
+        guard offset == bytes.count else { return [] }
         return entries
     }
 
@@ -343,9 +376,16 @@ enum LevelDB {
         // The metaindex handle comes first and is not needed: it points at the
         // filter block, which answers "might this key be here" — a question
         // with no meaning when every key is being read.
+        //
+        // A handle's numbers are varints off somebody else's disk; they may
+        // not fit an `Int` at all. `Int(exactly:)` refuses that rather than
+        // trapping, and `block` refuses one that runs past the file.
         guard varint(bytes, &offset) != nil, varint(bytes, &offset) != nil,
-              let indexOffset = varint(bytes, &offset), let indexSize = varint(bytes, &offset),
-              let index = block(file, offset: Int(indexOffset), size: Int(indexSize))
+              let rawIndexOffset = varint(bytes, &offset),
+              let rawIndexSize = varint(bytes, &offset),
+              let indexOffset = Int(exactly: rawIndexOffset),
+              let indexSize = Int(exactly: rawIndexSize),
+              let index = block(file, offset: indexOffset, size: indexSize)
         else { return [] }
 
         let ceiling = keyPrefix.flatMap(upperBound)
@@ -365,9 +405,11 @@ enum LevelDB {
             if let keyPrefix, precedes(separator, keyPrefix) { continue }
 
             var cursor = 0
-            guard let dataOffset = varint(handle.value, &cursor),
-                  let dataSize = varint(handle.value, &cursor),
-                  let data = block(file, offset: Int(dataOffset), size: Int(dataSize))
+            guard let rawDataOffset = varint(handle.value, &cursor),
+                  let rawDataSize = varint(handle.value, &cursor),
+                  let dataOffset = Int(exactly: rawDataOffset),
+                  let dataSize = Int(exactly: rawDataSize),
+                  let data = block(file, offset: dataOffset, size: dataSize)
             else { continue }
 
             for item in items(data) {
@@ -406,7 +448,13 @@ enum LevelDB {
     /// this reader means one site's value goes missing rather than a wrong one
     /// being returned.
     private static func block(_ file: Data, offset: Int, size: Int) -> [UInt8]? {
-        guard offset >= 0, size >= 0, offset + size + 5 <= file.count else { return nil }
+        // A block handle read off disk can point anywhere, including at
+        // `Int.max`. The bounds are written as remainders so a huge offset or
+        // size fails instead of overflowing `offset + size + 5`, and the five
+        // trailing bytes (compression marker plus checksum) are required to be
+        // inside the file.
+        guard offset >= 0, size >= 0, offset <= file.count, size <= file.count - offset else { return nil }
+        guard file.count - offset - size >= 5 else { return nil }
 
         let contents = slice(file, from: offset, count: size)
         return switch slice(file, from: offset + size, count: 1)[0] {
@@ -437,6 +485,11 @@ enum LevelDB {
         var restarts: UInt32 = 0
         for (index, byte) in block.suffix(4).enumerated() { restarts |= UInt32(byte) << (8 * index) }
 
+        // The entries stop where the restart array begins. Sizes are counted
+        // against that boundary and not the block's own length: a key or value
+        // that reaches into the restart array is borrowing bytes the writer
+        // never put there as an entry, and reading them would accept a
+        // truncated record as a whole one.
         let end = block.count - 4 - Int(restarts) * 4
         guard end >= 0, end <= block.count else { return [] }
 
@@ -445,23 +498,36 @@ enum LevelDB {
         var offset = 0
 
         while offset < end {
-            guard let shared = varint(block, &offset),
-                  let unshared = varint(block, &offset),
-                  let valueLength = varint(block, &offset),
-                  Int(shared) <= previous.count,
-                  offset + Int(unshared) + Int(valueLength) <= block.count
-            else { break }
+            // Every one of these is a varint off disk and may exceed `Int`;
+            // the shared-prefix count must also fit the key rebuilt so far.
+            // A block that will not walk cleanly is dropped whole rather than
+            // half-read, and each range is a remainder so `offset + length`
+            // cannot overflow.
+            guard let rawShared = varint(block, &offset), offset <= end,
+                  let rawUnshared = varint(block, &offset), offset <= end,
+                  let rawValueLength = varint(block, &offset), offset <= end,
+                  let shared = Int(exactly: rawShared),
+                  let unshared = Int(exactly: rawUnshared),
+                  let valueLength = Int(exactly: rawValueLength),
+                  shared <= previous.count,
+                  unshared <= end - offset
+            else { return [] }
 
-            let key = Array(previous.prefix(Int(shared))) + Array(block[offset..<(offset + Int(unshared))])
-            offset += Int(unshared)
-            let value = Array(block[offset..<(offset + Int(valueLength))])
-            offset += Int(valueLength)
+            let keyStart = offset
+            let keyEnd = keyStart + unshared
+            guard valueLength <= end - keyEnd else { return [] }
+
+            let key = Array(previous.prefix(shared)) + Array(block[keyStart..<keyEnd])
+            let value = Array(block[keyEnd..<(keyEnd + valueLength)])
+            offset = keyEnd + valueLength
 
             items.append((key, value))
             previous = key
         }
 
-        return items
+        // The walk has to land exactly on the boundary. Bytes left over mean
+        // the lengths and the block disagree.
+        return offset == end ? items : []
     }
 
     /// Bytewise, the order LevelDB itself sorts in.
@@ -489,6 +555,11 @@ enum LevelDB {
     /// LevelDB's varint: seven bits a byte, little end first, high bit set
     /// while more follow. Capped at ten bytes, which is as long as a 64-bit
     /// one can be — without the cap a run of `0xff` walks the whole file.
+    ///
+    /// The tenth byte (shift 63) is the only one that can overflow: it may
+    /// carry a single bit, and a value above that would lose its high bits in
+    /// a shift rather than fail — read as a small, wrong length. It is refused
+    /// instead, as is an eleventh byte or a ten-byte run that never ends.
     static func varint(_ bytes: [UInt8], _ offset: inout Int) -> UInt64? {
         var result: UInt64 = 0
         var shift: UInt64 = 0
@@ -496,6 +567,7 @@ enum LevelDB {
         while offset < bytes.count, shift < 64 {
             let byte = bytes[offset]
             offset += 1
+            if shift == 63, byte & 0x7f > 1 { return nil }
             result |= UInt64(byte & 0x7f) << shift
             if byte & 0x80 == 0 { return result }
             shift += 7

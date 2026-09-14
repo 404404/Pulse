@@ -183,6 +183,41 @@ struct SpendSummary: Equatable, Sendable {
         return ascending ? ordered : ordered.reversed()
     }
 
+    /// The part of a session that falls inside the span, or nil where none
+    /// does.
+    ///
+    /// This is the whole reason a session carries its own buckets. A session
+    /// whose work straddles the cutoff contributes only its in-span
+    /// quarter-hours, so a project's money and the span's own total are the
+    /// same sum — never the whole conversation, and never a share of it
+    /// worked out from a ratio.
+    ///
+    /// A session with no buckets is one read before the ledger kept them:
+    /// it falls back to being counted whole when it ended inside the span,
+    /// which is the old rule and never a silent zero.
+    private static func window(
+        _ session: UsageLedger.Session,
+        cutoff: Date?
+    ) -> (tokens: Int, cost: Double, last: Date)? {
+        guard let cutoff else { return (session.tokens, session.cost, session.end) }
+
+        guard !session.slots.isEmpty else {
+            return session.end >= cutoff ? (session.tokens, session.cost, session.end) : nil
+        }
+
+        var tokens = 0
+        var cost = 0.0
+        var last = cutoff
+        var found = false
+        for slot in session.slots where slot.start >= cutoff {
+            found = true
+            tokens += slot.tokens
+            cost += slot.cost
+            last = max(last, slot.start)
+        }
+        return found ? (tokens, cost, last) : nil
+    }
+
     /// Adds the ledgers up over the last `span` days, or over everything when
     /// `span` is nil.
     ///
@@ -258,17 +293,35 @@ struct SpendSummary: Equatable, Sendable {
                 hourTokens[calendar.component(.hour, from: slot.start), default: 0] += slot.tokens
             }
 
-            // Sessions are filtered by when they *ended*: a conversation that
-            // ran past midnight belongs to the day it finished on, which is
-            // the day its row will be read beside.
-            for session in ledger.sessions where cutoff.map({ session.end >= $0 }) ?? true {
-                summary.sessions.append(Session(agent: agent, session: session))
+            // **A session is counted by the part of it that falls in the
+            // span, not by when it ended.** A conversation that ran past
+            // midnight, or was resumed over days, used to be added whole to
+            // whichever day it finished on — so a project could report
+            // yesterday's $9 under today's $1. Its own quarter-hour buckets
+            // are what make the window exact, and they are priced, so the
+            // money is a sum rather than a proportion guessed from the total.
+            for session in ledger.sessions {
+                guard let windowed = Self.window(session, cutoff: cutoff) else { continue }
+
+                // The row carries the span's portion, so the list and the
+                // totals above it are the same arithmetic. Its `start` and
+                // `end` stay the conversation's own, which is when it ran.
+                summary.sessions.append(
+                    Session(
+                        agent: agent,
+                        session: UsageLedger.Session(
+                            id: session.id, name: session.name, title: session.title,
+                            project: session.project, start: session.start, end: session.end,
+                            tokens: windowed.tokens, cost: windowed.cost, slots: session.slots
+                        )
+                    )
+                )
 
                 guard let project = session.project else { continue }
-                projectTokens[project, default: 0] += session.tokens
-                projectCost[project, default: 0] += session.cost
+                projectTokens[project, default: 0] += windowed.tokens
+                projectCost[project, default: 0] += windowed.cost
                 projectSessions[project, default: 0] += 1
-                projectLastUsed[project] = max(projectLastUsed[project] ?? session.end, session.end)
+                projectLastUsed[project] = max(projectLastUsed[project] ?? windowed.last, windowed.last)
             }
 
             guard agentTokens > 0 || agentCost > 0 else { continue }

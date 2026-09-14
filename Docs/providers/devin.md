@@ -4,7 +4,7 @@
 |---|---|---|---|
 | `.devin` | Devin | the app's saved plan · `https://app.devin.ai` | `devin` |
 
-**Two routes.** The endpoint is live and needs a session, which Pulse reads out of a Chromium browser without asking for anything; the saved plan needs nothing at all but is only as fresh as the app's last launch. `.automatic` asks the endpoint and falls back to the saved plan.
+**Two routes.** The endpoint is live and needs a session, which Pulse reads out of a Chromium browser without asking for anything; the saved plan needs nothing at all but is only as fresh as the app's last launch. `.automatic` asks the endpoint when there is a credential and **never crosses to the saved plan if it fails** — the two need not be the same account or organization. The saved plan answers when there is no credential, and the tooling route always answers with it.
 
 Service: [`../../Sources/Pulse/Providers/DevinUsageService.swift`](../../Sources/Pulse/Providers/DevinUsageService.swift).
 
@@ -73,6 +73,15 @@ So the reading is stamped with **the launch**, not with now. The time comes from
 
 That is what puts "as of …" on the card instead of letting a morning-old figure pass for a fresh one, and `UsageCache`'s 24-hour ceiling drops it entirely once a day has gone by without a relaunch.
 
+`DevinUsageService.reading(for:launchedAt:now:)` validates the launch stamp and marks old snapshots. The cache also applies the age and reset limits to directly fetched readings before banking or displaying them:
+
+- Within `snapshotFreshFor` (ten minutes) the row is a **live** reading; past it the reading is `.stale`, which is what the card's "as of …" line is drawn from.
+- A window whose reset has already passed is **dropped, not aged**: its figure belongs to a window that no longer exists. The other window — and a balance, which has no reset at all — stays.
+- Past `UsageCache.maximumAge` (24 hours) the snapshot is not shown at all. It reads as `.devinPlanUnread`, whose remedy — open the app — is exactly what records a new row.
+- A snapshot with **no reliable stamp** — `logs/` missing, or a name that does not parse — is refused the same way rather than dated with the fetch's own clock. The database's modification date is deliberately not used as a fallback: every other key in the file keeps it current, so a reading from breakfast would be drawn as a second old. Undated is not fresh.
+
+A `.stale` saved plan is still **banked** by the cache even though it is not current: it is the last plan the app wrote, and `--json` (which never fetches) reads only the banked figures.
+
 ## The endpoint
 
 ```
@@ -91,7 +100,7 @@ The whole reply, measured — 232 bytes:
   "is_quota_plan": true, "overage_balance": 10 }
 ```
 
-It **names no plan**, so the card's plan line is taken from the row the app saved — the one place on this Mac that has one. `has_quota_allocation: false` draws no rings at all: zero percent of nothing is a plan with no quota on it, and two empty rings read as a full allowance.
+It **names no plan** on this account, so the card's plan line is empty unless the reply carries one — and it is never borrowed from the row the app saved, which names no organization to check against the endpoint's. `has_quota_allocation: false` draws no rings at all: zero percent of nothing is a plan with no quota on it, and two empty rings read as a full allowance.
 
 ### The credential is read from the browser
 
@@ -106,9 +115,17 @@ last-internal-org-for-external-org-v1-<slug>  org-<32 hex>
 
 The organization id is **hyphenated** (`org-`), not underscored — which is why both spellings are accepted. The key's suffix is the *external* slug and is often the literal string `null`, so the value is what is read rather than the name. `windsurf.com` is the fallback origin: the same account signed in through the older storefront leaves `devin_auth1_token` and `devin_primary_org_id` there, the same two values under different names.
 
+The session's `userId` is kept as the credential's `accountID`, and the `last-internal-org…` value beside it is the organization the endpoint is scoped to. Together with the route they form the credential's `UsageScope`. A pasted token names no user, so its scope uses a SHA-256 fingerprint of the token together with the organization entered beside it. The token itself is not written into the usage cache.
+
 **Read on every pass, never stored.** A saved copy would be a second place for the session to go stale and the one that cannot renew itself; the browser's copy is by definition the current one, and reading it costs about forty milliseconds. Nothing is written to `keys.dat` for this provider unless the reader pastes something.
 
 **Which browser** is the reader's choice, in Settings, defaulting to the one this Mac opens links with and then the rest. Only Chromium browsers are offered: Firefox and Safari keep no `localStorage` LevelDB, so listing them would be a choice that cannot work. **No keychain prompt** — unlike cookies, `localStorage` is not encrypted.
+
+### Binary storage boundaries
+
+`ChromiumLocalStorage` converts on-disk lengths and offsets with checked casts and bounds each range against the bytes remaining. Oversized varints and lengths are rejected before they can overflow an integer or index a buffer. Table entries stop before the restart array; those bytes cannot complete a truncated key or value.
+
+A `WriteBatch` is accepted whole or rejected whole, with its entry count matching its payload. Log records must stay within their 32KB block. Fragment chains require a FIRST and LAST, including the valid zero-length FIRST when only a header fits at a block boundary; orphaned fragments are ignored. Origin filtering and Snappy decompression remain in place. CRCs and the LevelDB manifest are not validated by this reader.
 
 ### Pasting instead
 
@@ -132,7 +149,7 @@ This is the trap in carrying both routes. The saved plan reports `dailyRemaining
 | `weekly_percentage`, `weekly_reset_at`, `hide_weekly_quota` | `.weekly`, 604,800s |
 | `overage_balance`, else `overage_balance_cents` ÷ 100 | `creditBalance` |
 | `has_quota_allocation` | `false` draws nothing at all |
-| `plan_name` / `planName` / `plan` / `tier`, else the saved row | the plan line |
+| `plan_name` / `planName` / `plan` / `tier` | the plan line, else none — never borrowed from the saved row |
 
 Resets arrived with an offset (`-08:00`) rather than as `Z`. Epoch seconds and milliseconds are read as well, since CodexBar's notes carry both and neither costs anything.
 
@@ -140,14 +157,22 @@ Resets arrived with an offset (`-08:00`) rather than as `Z`. Epoch seconds and m
 
 A reply that parses as JSON and carries neither window nor balance is `.unreadableReply`, not an account with nothing in it.
 
-## Two accounts in one store
+## Two accounts in one store, and two organizations behind one account
 
-More than one `cachedPlanInfoData:user-…` row can exist where two accounts have signed in on this Mac, and **nothing in the file says which is current**. The one whose `endTimestamp` is furthest out is taken — an active subscription outranks a lapsed one — and the plan name is on the card either way. `hasMultipleDevinAccounts` is in the payload but names nothing that resolves this.
+More than one `cachedPlanInfoData:user-…` row can exist where two accounts have signed in on this Mac, and **nothing in the file says which is current**. The tooling route takes the one whose `endTimestamp` is furthest out — an active subscription outranks a lapsed one — and the plan name is on the card either way. `hasMultipleDevinAccounts` is in the payload but names nothing that resolves this.
+
+**A shared user id is not the same allowance, and the two routes are never fused.** The endpoint is scoped to an **organization**; the saved row is keyed by a **user id** and carries no organization at all. One user can belong to several organizations, so the same `userId` can sit under two different quotas — and there is no evidence anywhere on this Mac of which organization a saved row belongs to. The consequences are deliberate and conservative:
+
+- The endpoint's plan line is **the reply's own** when it names one, and otherwise absent. The saved row's plan name is not borrowed, whatever `userId` the browser session carries: matching a user id does not establish the organization, and another organization's plan name is the same invention as a made-up percentage.
+- `.automatic` **never crosses from the endpoint to the app's saved plan.** If there is a credential the endpoint is tried, and a failure is reported as it is; the saved plan answers only when there is no credential to try, or when the tooling route was chosen explicitly.
+- The **cache** holds the same line. `ProviderUsage.requiresScopeMatch` is computed from the provider (Devin is the only one), and a banked reading stands in for another only when `UsageScope`s agree on **route, organization and identity**. `Identity` is the browser session's `userId`, the saved row's account id, or — for a pasted credential, which names nobody — a SHA-256 hash of the token, never the token itself. A missing identity or organization is never a wildcard.
+
+A **pasted token names no user** (and neither does the older flat `windsurf.com` storage), so its scope is a hash of the credential plus the organization it was pasted with: the *same* pasted credential's readings stay together, a different one's do not, and it never matches a saved row's route. The app cache's scope is its own route and user id, and can therefore never stand in for an endpoint reading.
 
 ## Failure copy
 
 - `.devinAppMissing` — no support directory under either name. "Devin isn't installed."
-- `.devinPlanUnread` — the store is there and holds no plan row. "Open Devin and sign in, so it can record your plan."
+- `.devinPlanUnread` — the store is there and holds no plan row, its newest row has no reliable launch stamp, or that stamp is older than `UsageCache.maximumAge`. Either way: "Open Devin and sign in, so it can record your plan."
 - `.devinOrganizationMissing` — a token was pasted with no organization beside it. Its own case rather than `.apiKeyMissing`, which would say "add a key" about a field that already has one.
 
 All three are `.neutral` to `UsageAlerts`: true until somebody does something, and not an outage to announce. The first two offer `openApp("Devin")`; the third offers the credential field.

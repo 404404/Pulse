@@ -65,6 +65,114 @@ struct ChromiumLocalStorageTests {
         return directory
     }
 
+    // MARK: - Building a table, and lengths that do not fit
+
+    /// The bytes of a varint, for values that do not fit an `Int`.
+    private static func varint64(_ value: UInt64) -> [UInt8] {
+        var remaining = value
+        var bytes: [UInt8] = []
+        while remaining >= 0x80 {
+            bytes.append(UInt8(remaining & 0x7f) | 0x80)
+            remaining >>= 7
+        }
+        bytes.append(UInt8(remaining))
+        return bytes
+    }
+
+    /// A batch's eight-byte sequence and four-byte count, so a record can be
+    /// assembled by hand around a length nobody would ever write.
+    private static func sequenceAndCount(_ count: UInt32, sequence: UInt64 = 1) -> [UInt8] {
+        var bytes: [UInt8] = []
+        for shift in 0..<8 { bytes.append(UInt8((sequence >> (8 * UInt64(shift))) & 0xff)) }
+        for shift in 0..<4 { bytes.append(UInt8((count >> (8 * UInt32(shift))) & 0xff)) }
+        return bytes
+    }
+
+    /// A data block's contents in LevelDB's prefix-compressed form: the first
+    /// key whole, the rest as "how many leading bytes are shared, then the new
+    /// bytes", then a single restart point. The reader needs only the restart
+    /// count to find where the entries stop, so one restart is enough.
+    private static func rawBlock(_ entries: [(key: [UInt8], value: [UInt8])]) -> [UInt8] {
+        var bytes: [UInt8] = []
+        var previous: [UInt8] = []
+        for (key, value) in entries {
+            var shared = 0
+            while shared < previous.count, shared < key.count, previous[shared] == key[shared] { shared += 1 }
+            bytes += varint(shared)
+            bytes += varint(key.count - shared)
+            bytes += varint(value.count)
+            bytes += Array(key[shared...])
+            bytes += value
+            previous = key
+        }
+        bytes += [0, 0, 0, 0]   // restart point at offset zero
+        bytes += [1, 0, 0, 0]   // one restart
+        return bytes
+    }
+
+    /// A table's key as stored: the user key, then the eight-byte trailer
+    /// carrying the sequence and the kind (1 is a value, 0 a deletion).
+    private static func internalKey(_ key: [UInt8], sequence: UInt64 = 1, kind: UInt8 = 1) -> [UInt8] {
+        var bytes = key
+        let trailer = (sequence << 8) | UInt64(kind)
+        for shift in 0..<8 { bytes.append(UInt8((trailer >> (8 * UInt64(shift))) & 0xff)) }
+        return bytes
+    }
+
+    private static let tableMagic: [UInt8] = [0x57, 0xfb, 0x80, 0x8b, 0x24, 0x75, 0x47, 0xdb]
+
+    /// A footer of exactly the 48 bytes a table ends with: the metaindex
+    /// handle (unused), the index handle, padding, and the magic.
+    private static func tableFooter(indexOffset: [UInt8], indexSize: [UInt8]) -> [UInt8] {
+        var bytes = varint(0) + varint(0) + indexOffset + indexSize
+        bytes += [UInt8](repeating: 0, count: 40 - bytes.count)
+        bytes += tableMagic
+        return bytes
+    }
+
+    /// A whole table: each data block as given, an index block naming every
+    /// one, and the footer.
+    private static func tableFile(_ blocks: [[(key: [UInt8], value: [UInt8])]]) -> Data {
+        var file: [UInt8] = []
+        var indexEntries: [(key: [UInt8], value: [UInt8])] = []
+        for block in blocks {
+            let contents = rawBlock(block)
+            let offset = file.count
+            file += contents
+            file += [0, 0, 0, 0, 0]   // uncompressed, plus a checksum Pulse ignores
+            indexEntries.append((block.last!.key, varint(offset) + varint(contents.count)))
+        }
+        let index = rawBlock(indexEntries)
+        let indexOffset = file.count
+        file += index
+        file += [0, 0, 0, 0, 0]
+        file += tableFooter(indexOffset: varint(indexOffset), indexSize: varint(index.count))
+        return Data(file)
+    }
+
+    /// A table whose index block carries one entry with the given raw handle
+    /// value — used to hand the reader a data handle it must refuse.
+    private static func tableWithIndexHandle(_ handle: [UInt8]) -> Data {
+        let index = rawBlock([(internalKey(Array("_https://a.test\0z".utf8)), handle)])
+        var file = index
+        file += [0, 0, 0, 0, 0]
+        file += tableFooter(indexOffset: varint(0), indexSize: varint(index.count))
+        return Data(file)
+    }
+
+    /// A table whose one data block is the given bytes, so a malformed entry
+    /// can be handed straight to the item parser.
+    private static func tableWithDataBlock(_ dataBlock: [UInt8]) -> Data {
+        var file = dataBlock + [0, 0, 0, 0, 0]
+        let handle = varint(0) + varint(dataBlock.count)
+        let index = rawBlock([(internalKey(Array("_https://a.test\0z".utf8)), handle)])
+        let indexOffset = file.count
+        file += index
+        file += [0, 0, 0, 0, 0]
+        file += tableFooter(indexOffset: varint(indexOffset), indexSize: varint(index.count))
+        return Data(file)
+    }
+
     // MARK: - The log
 
     @Test("One origin's entries, and nobody else's")
@@ -209,5 +317,241 @@ struct ChromiumLocalStorageTests {
         #expect(Snappy.decompress([0x0a, 0x00, 0x61]) == nil)
         // A copy reaching back further than anything written.
         #expect(Snappy.decompress([0x04, 0x0d, 0x01]) == nil)
+    }
+
+    // MARK: - Malformed input the parser must refuse rather than trap
+
+    @Test("A varint may not overflow 64 bits")
+    func varintsRejectOverflow() {
+        var offset = 0
+        // Ten bytes, the tenth carrying more than the one bit a UInt64 has
+        // left. Shifting it anyway would silently read a small, wrong number.
+        #expect(LevelDB.varint([UInt8](repeating: 0xff, count: 9) + [0x7f], &offset) == nil)
+
+        // The largest value that does fit still decodes.
+        var maxOffset = 0
+        #expect(LevelDB.varint([UInt8](repeating: 0xff, count: 9) + [0x01], &maxOffset) == UInt64.max)
+    }
+
+    @Test("A WriteBatch length that cannot be an Int is refused, not trapped")
+    func malformedBatchLengthsDoNotTrap() {
+        let origin = "_https://a.test\0token"
+
+        // A key length of UInt64.max, then a plausible key. The old reader
+        // trapped converting this to Int before it ever compared ranges.
+        var payload = Self.sequenceAndCount(1)
+        payload += [1] + Self.varint64(UInt64.max) + Array(origin.utf8) + [1, 0x41]
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+
+        // Int.max fits the conversion but not the bytes that remain.
+        payload = Self.sequenceAndCount(1)
+        payload += [1] + Self.varint64(UInt64(Int.max)) + Array(origin.utf8) + [1, 0x41]
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+
+        // A value length the same way, past a key that did parse.
+        payload = Self.sequenceAndCount(1)
+        payload += [1] + Self.varint(origin.utf8.count) + Array(origin.utf8)
+        payload += Self.varint64(UInt64(Int.max)) + [0x41]
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+
+        // A varint that never ends is not a length either.
+        payload = Self.sequenceAndCount(1)
+        payload += [1] + [UInt8](repeating: 0xff, count: 11) + [1, 0x41]
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+    }
+
+    @Test("A truncated WriteBatch is dropped whole")
+    func truncatedBatchIsNotHalfRead() {
+        var payload = Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "token"), Self.value("secret")),
+        ])
+        // The count says two records; the payload carries one. The first one
+        // parsing cleanly must not make it a credential on its own.
+        payload[8] = 2
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+    }
+
+    @Test("A WriteBatch whose count undercounts its records is refused")
+    func batchCountMustMatchPayload() {
+        var payload = Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "one"), Self.value("1")),
+            (Self.key(origin: "https://a.test", name: "two"), Self.value("2")),
+        ])
+        // The count says one; the payload carries two. Ignoring the tail would
+        // accept a write whose remainder is truncated or repurposed.
+        payload[8] = 1
+        #expect(LevelDB.log(Self.record(payload)).isEmpty)
+    }
+
+    @Test("An orphaned or unfinished fragment is not a record")
+    func fragmentStateIsRefused() {
+        let payload = Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "token"), Self.value("secret")),
+        ])
+        // A middle with no beginning, then an end with no beginning.
+        #expect(LevelDB.log(Self.record(payload, type: 3) + Self.record(payload, type: 4)).isEmpty)
+        // A beginning that never ends is a half-write and is not emitted.
+        #expect(LevelDB.log(Self.record(payload, type: 2)).isEmpty)
+    }
+
+    @Test("A whole record discards a fragment chain that never ended")
+    func fullRecordDiscardsPending() {
+        let chain = Self.record(Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "half"), Self.value("secret")),
+        ]), type: 2)
+        let whole = Self.record(Self.batch(sequence: 2, [
+            (Self.key(origin: "https://a.test", name: "whole"), Self.value("real")),
+        ]))
+        let entries = LevelDB.log(chain + whole)
+        // The raw key still carries Chromium's encoding byte; compare the bytes
+        // the store was built with rather than re-interpreting the key here.
+        #expect(entries.map(\.key) == [Self.key(origin: "https://a.test", name: "whole")])
+    }
+
+    @Test("A middle fragment is joined to its beginning")
+    func middleFragmentIsJoined() {
+        let payload = Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "split"), Self.value("value")),
+        ])
+        let third = payload.count / 3
+        let log = Self.record(Array(payload.prefix(third)), type: 2)
+            + Self.record(Array(payload[third..<(third * 2)]), type: 3)
+            + Self.record(Array(payload[(third * 2)...]), type: 4)
+        #expect(LevelDB.log(log).map(\.key) == [Self.key(origin: "https://a.test", name: "split")])
+    }
+
+    @Test("A zero-length first fragment begins a chain the next block ends")
+    func zeroLengthFirstFragmentIsAChain() {
+        // Fill block zero to its last seven bytes, so the next header is
+        // exactly the block's tail and its payload has no room at all: Chromium
+        // writes a zero-length FIRST there and the batch in the next block.
+        let filler = Self.record(Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "pad"), Self.value(String(repeating: "x", count: 32_716))),
+        ]))
+        #expect(filler.count == 32_761)
+
+        let target = Self.batch(sequence: 2, [
+            (Self.key(origin: "https://a.test", name: "token"), Self.value("secret")),
+        ])
+        var log = filler
+        log += [0, 0, 0, 0, 0, 0, 2]        // zero-length FIRST in block zero
+        log += Self.record(target, type: 4) // its LAST and payload, in block one
+
+        #expect(LevelDB.log(log).map(\.key) == [
+            Self.key(origin: "https://a.test", name: "pad"),
+            Self.key(origin: "https://a.test", name: "token"),
+        ])
+    }
+
+    @Test("A record that claims to cross a 32KB block is not followed")
+    func logRecordMayNotCrossBlock() {
+        // One more than a block can hold after its seven-byte header: 32762.
+        let victim = Self.record(Self.batch(sequence: 1, [
+            (Self.key(origin: "https://a.test", name: "later"), Self.value("real")),
+        ]))
+        var log: [UInt8] = [0, 0, 0, 0, 0xfa, 0x7f, 1]
+        log += [UInt8](repeating: 0x41, count: 32_762)
+        log += victim
+        // If the crossing header were followed it would land exactly on the
+        // real record and return it. Refusing the crossing yields nothing.
+        #expect(LevelDB.log(log).isEmpty)
+    }
+
+    @Test("A log record whose length runs past the file is refused")
+    func truncatedLogRecordIsRefused() {
+        var log: [UInt8] = [0, 0, 0, 0, 100, 0, 1]
+        log += [UInt8](repeating: 0x41, count: 10)
+        #expect(LevelDB.log(log).isEmpty)
+    }
+
+    // MARK: - The table, and what it must not walk into
+
+    @Test("A table reads through its index and rebuilds shared prefixes")
+    func tableReadsThroughTheIndex() {
+        let data = Self.tableFile([[
+            (Self.internalKey(Array("_https://a.test\0bar".utf8)), Array("one".utf8)),
+            (Self.internalKey(Array("_https://a.test\0foo".utf8)), Array("two".utf8)),
+            (Self.internalKey(Array("_https://b.test\0token".utf8)), Array("three".utf8)),
+        ]])
+        let entries = LevelDB.table(data)
+        #expect(entries.map { String(decoding: $0.key, as: UTF8.self) } == [
+            "_https://a.test\u{0}bar", "_https://a.test\u{0}foo", "_https://b.test\u{0}token",
+        ])
+        #expect(entries.map { String(decoding: $0.value ?? [], as: UTF8.self) } == ["one", "two", "three"])
+    }
+
+    @Test("The prefix never reads a block whose separator sorts below it")
+    func prefixSkipsBlocks() {
+        let data = Self.tableFile([
+            [(Self.internalKey(Array("_https://a.test\0token".utf8)), Array("a".utf8))],
+            [(Self.internalKey(Array("_https://z.test\0token".utf8)), Array("z".utf8))],
+        ])
+        let entries = LevelDB.table(data, keyPrefix: Array("_https://z.test\0".utf8))
+        #expect(entries.map { String(decoding: $0.key, as: UTF8.self) } == ["_https://z.test\u{0}token"])
+    }
+
+    @Test("A file too short for a footer, or with the wrong magic, is not a table")
+    func badFooterIsRefused() {
+        #expect(LevelDB.table(Data()).isEmpty)
+        #expect(LevelDB.table(Data(repeating: 0, count: 47)).isEmpty)
+
+        var wrong = Self.varint(0) + Self.varint(0) + Self.varint(0) + Self.varint(0)
+        wrong += [UInt8](repeating: 0, count: 40 - wrong.count)
+        wrong += [0, 1, 2, 3, 4, 5, 6, 7]
+        #expect(LevelDB.table(Data(wrong)).isEmpty)
+    }
+
+    @Test("An index handle that cannot be an Int is refused, not trapped")
+    func indexHandleOverflowsInt() {
+        #expect(LevelDB.table(Data(Self.tableFooter(
+            indexOffset: Self.varint64(UInt64.max), indexSize: Self.varint(20)))).isEmpty)
+        #expect(LevelDB.table(Data(Self.tableFooter(
+            indexOffset: Self.varint(0), indexSize: Self.varint64(UInt64.max)))).isEmpty)
+
+        // A varint that never ends is not a handle either.
+        let runaway = [UInt8](repeating: 0xff, count: 10) + [0x01]
+        #expect(LevelDB.table(Data(Self.tableFooter(
+            indexOffset: runaway, indexSize: Self.varint(20)))).isEmpty)
+    }
+
+    @Test("A data handle that points outside the file is refused")
+    func dataHandleOutOfRange() {
+        // Offsets that do not fit an Int at all.
+        #expect(LevelDB.table(Self.tableWithIndexHandle(Self.varint64(UInt64.max) + Self.varint(4))).isEmpty)
+        #expect(LevelDB.table(Self.tableWithIndexHandle(Self.varint(0) + Self.varint64(UInt64.max))).isEmpty)
+
+        // Both fit an Int but the range still lands past the file; the old
+        // `offset + size + 5` sum would have overflowed for these.
+        let nearMax = Self.varint64(UInt64(Int.max))
+        #expect(LevelDB.table(Self.tableWithIndexHandle(nearMax + nearMax)).isEmpty)
+    }
+
+    @Test("A data block whose entry lengths do not fit is dropped whole")
+    func malformedItemsDoNotTrap() {
+        // An unshared count past UInt64's Int range.
+        var block = Self.varint(0) + Self.varint64(UInt64.max)
+        block += [0, 0, 0, 0, 1, 0, 0, 0]
+        #expect(LevelDB.table(Self.tableWithDataBlock(block)).isEmpty)
+
+        // A value length the same way, after a key that did parse.
+        block = Self.varint(0) + Self.varint(2) + Self.varint64(UInt64.max)
+        block += Array("ab".utf8) + [0, 0, 0, 0, 1, 0, 0, 0]
+        #expect(LevelDB.table(Self.tableWithDataBlock(block)).isEmpty)
+
+        // A shared count that fits an Int but claims more than was rebuilt.
+        block = Self.varint64(UInt64(Int.max)) + Self.varint(2) + Self.varint(1)
+        block += Array("ab".utf8) + [1, 0, 0, 0, 1, 0, 0, 0]
+        #expect(LevelDB.table(Self.tableWithDataBlock(block)).isEmpty)
+    }
+
+    @Test("A value that would borrow the restart array is refused")
+    func itemValueMayNotUseTheRestartArray() {
+        // A whole key, then a value length that runs past the entries into the
+        // restart array. Bounding against the block's length rather than the
+        // entries' would read the array as value bytes and accept the record.
+        var block = Self.varint(0) + Self.varint(2) + Self.varint(6)
+        block += Array("ab".utf8) + Array("XY".utf8)
+        block += [0, 0, 0, 0, 1, 0, 0, 0]
+        #expect(LevelDB.table(Self.tableWithDataBlock(block)).isEmpty)
     }
 }

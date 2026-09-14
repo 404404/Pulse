@@ -11,8 +11,15 @@ import Testing
 /// live machine would carry their conversations with it.
 @Suite("Agent stores")
 struct AgentStoreTests {
-    private static func temporary(_ name: String) -> URL {
-        URL.temporaryDirectory.appending(path: "\(name)-\(UUID().uuidString)")
+    /// A private root this test owns, created fresh under the system temporary
+    /// directory. Fixtures live inside it; cleanup removes only what is handed
+    /// back here and never walks up from a path inside it.
+    private static func temporary(_ name: String) throws -> URL {
+        let root = URL.temporaryDirectory.appending(
+            path: "PulseAgentStoreTests-\(name)-\(UUID().uuidString)"
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
     }
 
     private static let prices: [String: ModelPrice] = [
@@ -23,11 +30,9 @@ struct AgentStoreTests {
 
     @Test("An assistant message's counts become a day and a session")
     func openCodeIsRead() throws {
-        let file = Self.temporary("opencode").appendingPathExtension("db")
-        try FileManager.default.createDirectory(
-            at: file.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let root = try Self.temporary("opencode")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appending(path: "opencode.db")
 
         var handle: OpaquePointer?
         #expect(sqlite3_open(file.path, &handle) == SQLITE_OK)
@@ -69,13 +74,13 @@ struct AgentStoreTests {
 
     @Test("A turn's usage is read per model, and the folder names the project")
     func grokIsRead() throws {
-        let root = Self.temporary("grok")
+        let root = try Self.temporary("grok")
+        defer { try? FileManager.default.removeItem(at: root) }
         // The folder is the working directory, percent-encoded.
         let run = root
             .appending(path: "%2FUsers%2Fme%2FCode%2FPulse")
             .appending(path: "01a01492")
         try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
 
         let lines = [
             #"{"timestamp":1789372800,"params":{"update":{"sessionUpdate":"user_message_chunk","content":"Fix the ring"}}}"#,
@@ -104,9 +109,10 @@ struct AgentStoreTests {
 
     @Test("`input_other` is fresh input, counted beside the cache")
     func kimiIsRead() throws {
-        let run = Self.temporary("kimi").appending(path: "hash/session")
+        let root = try Self.temporary("kimi")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let run = root.appending(path: "hash/session")
         try FileManager.default.createDirectory(at: run, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: run.deletingLastPathComponent().deletingLastPathComponent()) }
 
         let line = """
         {"timestamp":1789372800,"message":{"payload":{"model":"priced","token_usage":{\
@@ -114,7 +120,6 @@ struct AgentStoreTests {
         """
         try line.write(to: run.appending(path: "wire.jsonl"), atomically: true, encoding: .utf8)
 
-        let root = run.deletingLastPathComponent().deletingLastPathComponent()
         let ledger = KimiCLIStore.ledger(at: root, prices: Self.prices)
         let day = try #require(ledger.days.first { $0.tokens > 0 })
         #expect(day.tally == TokenTally(input: 100, cacheWrite: 20, cacheRead: 300, output: 15))
@@ -123,8 +128,10 @@ struct AgentStoreTests {
     // MARK: - Nothing to read
 
     @Test("A store that is not there is not an empty account")
-    func missingStoresAreAbsent() {
-        let nowhere = Self.temporary("nowhere")
+    func missingStoresAreAbsent() throws {
+        let root = try Self.temporary("nowhere")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nowhere = root.appending(path: "absent")
         #expect(OpenCodeStore.ledger(at: nowhere, prices: [:]).days.isEmpty)
         #expect(GrokStore.ledger(at: nowhere, prices: [:]).days.isEmpty)
         #expect(KimiCLIStore.ledger(at: nowhere, prices: [:]).days.isEmpty)

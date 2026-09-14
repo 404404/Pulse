@@ -331,4 +331,105 @@ struct SpendSummaryTests {
         #expect(Self.summary([:], overLast: 7).isEmpty)
         #expect(Self.summary([.codex: .empty], overLast: 7).isEmpty)
     }
+
+    // MARK: - Sessions that straddle the span
+
+    @Test("A session resumed past midnight is counted by the day, not by when it ended")
+    func aSessionAcrossMidnightFollowsTheSpan() {
+        // The bug: one session with 900 tokens / $9 yesterday and 100 / $1
+        // today put the whole 1000 / $10 on the project while the Today total
+        // read 100 / $1.
+        let lateYesterday = Self.calendar.date(
+            bySettingHour: 23, minute: 30, second: 0,
+            of: Self.calendar.date(byAdding: .day, value: -1, to: Self.today)!
+        )!
+        let noonToday = Self.calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Self.today)!
+
+        var ledger = Self.ledger([Self.day(1, tokens: 900, cost: 9), Self.day(0, tokens: 100, cost: 1)])
+        ledger.sessions = [
+            UsageLedger.Session(
+                id: "/tmp/long.jsonl", name: "long", title: "Long", project: "Pulse",
+                start: lateYesterday, end: noonToday, tokens: 1000, cost: 10,
+                slots: [
+                    .init(start: lateYesterday, tokens: 900, cost: 9),
+                    .init(start: noonToday, tokens: 100, cost: 1),
+                ]
+            ),
+        ]
+
+        let today = Self.summary([.codex: ledger], overLast: 1)
+        #expect(today.tokens == 100)
+        #expect(today.cost == 1)
+        #expect(today.projects.first?.tokens == 100)
+        #expect(abs((today.projects.first?.cost ?? 0) - 1) < 1e-9)
+        // The row carries the span's portion, so the list and the totals above
+        // it are the same arithmetic.
+        #expect(today.sessions.first?.session.tokens == 100)
+
+        // The whole session is back once the span reaches before it.
+        let week = Self.summary([.codex: ledger], overLast: 7)
+        #expect(week.projects.first?.tokens == 1000)
+        #expect(abs((week.projects.first?.cost ?? 0) - 10) < 1e-9)
+    }
+
+    @Test("A session resumed over days contributes only the days in the window")
+    func aResumedSessionFollowsTheWindow() {
+        let slots = (0..<3).map { offset -> UsageLedger.Slot in
+            let day = Self.calendar.date(byAdding: .day, value: -offset, to: Self.today)!
+            let at = Self.calendar.date(bySettingHour: 10, minute: 0, second: 0, of: day)!
+            return .init(start: at, tokens: 100, cost: 1)
+        }
+        var ledger = Self.ledger((0..<3).map { Self.day($0, tokens: 100, cost: 1) })
+        ledger.sessions = [
+            UsageLedger.Session(
+                id: "/tmp/resumed.jsonl", name: "resumed", title: nil, project: "Pulse",
+                start: slots[2].start, end: slots[0].start, tokens: 300, cost: 3, slots: slots
+            ),
+        ]
+
+        let week = Self.summary([.codex: ledger], overLast: 7)
+        #expect(week.projects.first?.tokens == 300)
+        #expect(week.sessions.count == 1)
+
+        let todayOnly = Self.summary([.codex: ledger], overLast: 1)
+        #expect(todayOnly.tokens == 100)
+        #expect(todayOnly.projects.first?.tokens == 100)
+        #expect(todayOnly.projects.first?.sessions == 1)
+        #expect(todayOnly.sessions.count == 1)
+    }
+
+    @Test("The project total is the sum of the in-span session buckets")
+    func projectTotalReconcilesWithTheSpan() {
+        // Two sessions in one project, one straddling the cutoff. Nothing is
+        // prorated: the project's money is the sum of the buckets, the same
+        // number the day rows add up to.
+        let yesterdayLate = Self.calendar.date(
+            bySettingHour: 23, minute: 0, second: 0,
+            of: Self.calendar.date(byAdding: .day, value: -1, to: Self.today)!
+        )!
+        let morning = Self.calendar.date(bySettingHour: 9, minute: 0, second: 0, of: Self.today)!
+        let afternoon = Self.calendar.date(bySettingHour: 15, minute: 0, second: 0, of: Self.today)!
+
+        var ledger = Self.ledger([Self.day(1, tokens: 500, cost: 5), Self.day(0, tokens: 300, cost: 3)])
+        ledger.sessions = [
+            UsageLedger.Session(
+                id: "a", name: "a", title: nil, project: "Pulse",
+                start: yesterdayLate, end: afternoon, tokens: 600, cost: 6,
+                slots: [
+                    .init(start: yesterdayLate, tokens: 500, cost: 5),
+                    .init(start: afternoon, tokens: 100, cost: 1),
+                ]
+            ),
+            UsageLedger.Session(
+                id: "b", name: "b", title: nil, project: "Pulse",
+                start: morning, end: morning, tokens: 200, cost: 2,
+                slots: [.init(start: morning, tokens: 200, cost: 2)]
+            ),
+        ]
+
+        let summary = Self.summary([.codex: ledger], overLast: 1)
+        #expect(summary.projects.reduce(0) { $0 + $1.tokens } == summary.tokens)
+        #expect(summary.projects.first?.cost == summary.cost)
+        #expect(summary.projects.first?.tokens == 300)
+    }
 }

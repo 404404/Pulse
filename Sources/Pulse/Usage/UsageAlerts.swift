@@ -557,6 +557,25 @@ final class UsageAlerts {
         return granted && settings.wantsAlerts
     }
 
+    /// Whether a `.stale` reading should count against this account.
+    ///
+    /// False for a **push route** — Claude Code's status line only writes while
+    /// a session runs — and false for a reading out of an app's own saved state
+    /// (`UsageRoute.appCache`). Devin's figures are written when its app
+    /// launches and not again while it runs, so an old reading means nobody has
+    /// relaunched it, not that a check failed. Counting that would post "the
+    /// last few checks didn't get through" over a route where every check got
+    /// through — the one thing these rules exist to prevent.
+    ///
+    /// `nonisolated static` and pure, so a test can pin the rule directly.
+    nonisolated static func staleMeansFailure(
+        route: UsageSource,
+        raw: ProviderUsage,
+        for account: AccountKey
+    ) -> Bool {
+        !route.reportsOnlyWhenUsed(for: account) && raw.origin != .appCache
+    }
+
     /// A reading has landed. Decide what it is worth saying, and say it.
     ///
     /// `raw` is what the provider's service actually returned, before
@@ -579,7 +598,9 @@ final class UsageAlerts {
             announcesReset: settings.alertsOnReset,
             announcesFailure: settings.alertsOnFailure,
             lowBalance: settings.lowBalanceAlert(for: account),
-            staleMeansFailure: !settings.source(for: account).reportsOnlyWhenUsed(for: account),
+            staleMeansFailure: Self.staleMeansFailure(
+                route: settings.source(for: account), raw: raw, for: account
+            ),
             // The one clock reading in here, taken at the edge and passed in,
             // so the rules themselves stay decidable from their arguments.
             now: Date()

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SQLite3
 
@@ -76,9 +77,36 @@ struct DevinUsageService: Sendable {
     /// The browser to read, or nil to try the default one and then the rest.
     let browser: BrowserCookies.Browser?
 
-    init(enteredKey: String? = nil, browser: BrowserCookies.Browser? = nil) {
+    /// Test seams, all nil in production. They exist so the **real** route
+    /// decision below can be exercised against a scratch store and a stub
+    /// endpoint, with no browser, no network and nothing read off this Mac.
+    let credential: Credential?
+    let store: URL?
+    let endpoint: (@Sendable (Credential) async -> ProviderUsage)?
+    /// The clock, injectable so a fixture with fixed reset times is not a time
+    /// bomb waiting for the calendar to move past it.
+    let clock: @Sendable () -> Date
+    /// Whether the browser is searched when nothing is pasted. False in the
+    /// tests, so a Mac that really is signed in to Devin does not supply a
+    /// credential to a test that is about having none.
+    let searchesBrowser: Bool
+
+    init(
+        enteredKey: String? = nil,
+        browser: BrowserCookies.Browser? = nil,
+        credential: Credential? = nil,
+        store: URL? = nil,
+        endpoint: (@Sendable (Credential) async -> ProviderUsage)? = nil,
+        clock: @escaping @Sendable () -> Date = { Date() },
+        searchesBrowser: Bool = true
+    ) {
         self.enteredKey = enteredKey
         self.browser = browser
+        self.credential = credential
+        self.store = store
+        self.endpoint = endpoint
+        self.clock = clock
+        self.searchesBrowser = searchesBrowser
     }
 
     /// Where the app keeps its state. Both names are checked because the
@@ -96,65 +124,137 @@ struct DevinUsageService: Sendable {
     ]
 
     func fetch(source: UsageSource) async -> ProviderUsage {
-        let credential = Credential(pasted: enteredKey) ?? Self.fromBrowser(browser)?.credential
+        // A pinned saved-plan route has no need to open browser storage.
+        let credential: Credential? = source == .tooling ? nil : (
+            self.credential
+                ?? Credential(pasted: enteredKey)
+                ?? (searchesBrowser ? Self.fromBrowser(browser)?.credential : nil)
+        )
+        return await Self.result(
+            for: source,
+            credential: credential,
+            store: store,
+            endpoint: endpoint,
+            now: clock()
+        )
+    }
 
+    /// What each source actually does, with the credential already resolved.
+    ///
+    /// **The endpoint is never crossed with the app's saved plan.** The saved
+    /// row names no organization, and the endpoint is scoped to one, so two
+    /// readings can share a user id and still be different organizations'
+    /// allowances. A failure on the endpoint is therefore reported as it is:
+    /// the saved plan answers only when there is no endpoint credential to try,
+    /// or when the tooling route was chosen explicitly. The reply's own plan
+    /// name, when it sends one, is kept — it is the endpoint describing itself.
+    ///
+    /// Static and credential-explicit so the routing can be tested through
+    /// itself, without a browser or a request.
+    static func result(
+        for source: UsageSource,
+        credential: Credential?,
+        store: URL?,
+        endpoint: (@Sendable (Credential) async -> ProviderUsage)?,
+        now: Date
+    ) async -> ProviderUsage {
+        let call = endpoint ?? Self.live
         switch source {
         case .endpoint:
             guard let credential else {
                 return ProviderUsage.unavailable(.devin, reason: .apiKeyMissing).recording(.endpoint)
             }
-            return await Self.live(credential).recording(.endpoint)
+            return Self.scoped(await call(credential), credential).recording(.endpoint)
 
         case .tooling:
-            return cached().recording(.appCache)
+            return appCache(store: store, now: now).recording(.appCache)
 
         case .automatic, .desktopApp:
-            guard let credential else { return cached().recording(.appCache) }
-
-            let live = await Self.live(credential).recording(.endpoint)
-            // A token that is simply wrong should say so rather than falling
-            // through to a reading from breakfast that looks like it worked.
-            guard case .unavailable(let reason) = live.state,
-                  reason == .unreachable || reason == .serverError || reason == .rateLimited
-            else { return live }
-
-            return cached().recording(.appCache, after: live.attempts)
+            guard let credential else {
+                return appCache(store: store, now: now).recording(.appCache)
+            }
+            // Endpoint only. **No crossing to the saved plan after it fails**:
+            // the row names no organization to compare with the endpoint's, so
+            // a fallback there could be another organization's allowance.
+            return Self.scoped(await call(credential), credential).recording(.endpoint)
         }
     }
 
     // MARK: - The app's own cache
 
-    private func cached() -> ProviderUsage {
-        guard let support = Self.supportDirectory() else {
+    /// How long after launch the saved plan still counts as current.
+    ///
+    /// The row is written once, at launch, and not again while the app runs —
+    /// measured: the app was quit and reopened at 09:20:01 and the row changed
+    /// at 09:20:16. So the figures are the launch's, and past this they are
+    /// shown as a snapshot ("as of …") rather than as a live reading. The card
+    /// would otherwise let a morning-old figure pass for a fresh one.
+    static let snapshotFreshFor: TimeInterval = 10 * 60
+
+    /// The app's saved plan, or why there is none.
+    ///
+    /// **The row's key names a user, not an organization**, and nothing in the
+    /// file or its key carries one. So this reading's scope is the app-cache
+    /// route plus that user id, and it can never match an endpoint reading's
+    /// scope — which is the honest answer, because the endpoint is
+    /// organization-scoped and this is not.
+    static func appCache(store: URL?, now: Date) -> ProviderUsage {
+        guard let support = store ?? defaultSupportDirectory() else {
             return .unavailable(.devin, reason: .devinAppMissing)
         }
-
         let database = support.appending(path: "User/globalStorage/state.vscdb")
         guard let plan = Self.plan(in: database) else {
             return .unavailable(.devin, reason: .devinPlanUnread)
         }
+        return reading(for: plan, launchedAt: lastLaunch(in: support), now: now)
+    }
 
-        let windows = Self.windows(from: plan)
+    /// The reading a saved plan amounts to at `now`, given when it was written.
+    ///
+    /// **Pure**, so the age rules can be argued without a file on disk. Three
+    /// things happen here that an untouched snapshot did not:
+    ///
+    /// - A window whose reset has passed is **dropped, not aged**: whatever it
+    ///   said belongs to a window that no longer exists.
+    /// - A snapshot with **no reliable stamp** — missing, in the future, or
+    ///   past `UsageCache.maximumAge` — is not shown at all. Reading it as
+    ///   current and letting the cache stamp it with the fetch's own clock is a
+    ///   fresh reading invented out of nothing. It reads as `.devinPlanUnread`,
+    ///   neutral to the alert rules, and the remedy — open the app — writes a
+    ///   new row.
+    /// - A snapshot older than `snapshotFreshFor` is marked `.stale`, which is
+    ///   what puts "as of …" on the card.
+    static func reading(for plan: Plan, launchedAt: Date?, now: Date) -> ProviderUsage {
+        guard let launchedAt, launchedAt <= now,
+              now.timeIntervalSince(launchedAt) <= UsageCache.maximumAge else {
+            return .unavailable(.devin, reason: .devinPlanUnread)
+        }
+
+        let windows = Self.windows(from: plan).filter { ($0.resetsAt ?? .distantFuture) > now }
         let balance = plan.overageBalance
-
         guard !windows.isEmpty || balance != nil else {
             return .unavailable(.devin, reason: .noLimitsReported)
         }
 
-        return ProviderUsage(
+        var reading = ProviderUsage(
             account: AccountKey(.devin),
             windows: windows,
-            observedAt: Self.lastLaunch(in: support) ?? Self.modified(database),
-            state: .live,
+            observedAt: launchedAt,
+            state: now.timeIntervalSince(launchedAt) <= snapshotFreshFor ? .live : .stale,
             plan: plan.planName,
             creditBalance: balance.map(Self.money)
         )
+        // The row names the account it was written for; the scope travels with
+        // the reading so the cache never lends its figures to another account's
+        // or another organization's failure.
+        reading.sourceScope = UsageScope(route: .appCache, organization: nil, identity: plan.accountID)
+        return reading
     }
 
     /// Whether this Mac has ever run the app. Read by `Provider` to decide
     /// whether a ring is worth offering at all — there is nothing to paste
     /// here, so an install is the only evidence there is.
-    static func isInstalled() -> Bool { supportDirectory() != nil }
+    static func isInstalled() -> Bool { defaultSupportDirectory() != nil }
 
     // MARK: - The pasted credential
 
@@ -180,6 +280,14 @@ struct DevinUsageService: Sendable {
         /// which the endpoint refuses; it is a separate reason from a missing
         /// token so the message can say which half is missing.
         let organization: String?
+        /// The account the browser session named, when it named one.
+        ///
+        /// `auth1_session` carries a `userId` beside the token. It identifies
+        /// endpoint readings only together with their organization; it does
+        /// not establish that an app-cache row belongs to that organization.
+        /// A pasted token and the older flat store name no user. Their cache
+        /// scope uses a credential fingerprint, not a guessed account id.
+        let accountID: String?
 
         init?(pasted: String?) {
             var text = pasted?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -200,47 +308,53 @@ struct DevinUsageService: Sendable {
 
             self.token = token
             organization = parts.dropFirst().first.flatMap(Self.normalize)
+            // What somebody pastes is a string, and a string asserts no
+            // account. Saying it did would be the guess this type refuses.
+            accountID = nil
         }
 
-        /// The same two values, out of a browser's `localStorage`.
+        /// The same values, out of a browser's `localStorage`.
         ///
-        /// Nil unless **both** are there. Half a session is not a credential:
-        /// it would fire a request that can only fail, and — worse — stop the
-        /// search at a browser that has nothing to offer.
+        /// Nil unless **both** a token and an organisation are there. Half a
+        /// session is not a credential: it would fire a request that can only
+        /// fail, and — worse — stop the search at a browser that has nothing
+        /// to offer.
         init?(storage: [String: String]) {
-            guard let token = Self.token(in: storage), let organization = Self.organization(in: storage) else {
-                return nil
-            }
-            self.token = token
-            self.organization = Self.normalize(organization)
-            guard self.organization != nil else { return nil }
+            guard let session = Self.session(in: storage),
+                  let organization = Self.organization(in: storage),
+                  let normalized = Self.normalize(organization)
+            else { return nil }
+            token = session.token
+            accountID = session.userID
+            self.organization = normalized
         }
 
-        /// `app.devin.ai` keeps it inside `auth1_session`; `windsurf.com`
-        /// keeps the same thing flat, under `devin_auth1_token`. Anything that
-        /// parses as an object with a plausible token in it is accepted after
-        /// those two, because the key holding it has been renamed once already.
-        private static func token(in storage: [String: String]) -> String? {
-            if let session = storage["auth1_session"], let token = auth1(in: session) { return token }
-            if let flat = storage["devin_auth1_token"].flatMap(unquote), flat.count > 20 { return flat }
+        /// The token and the user id that came with it, read out of one object
+        /// rather than two independent searches that could return different
+        /// accounts' halves.
+        private static func session(in storage: [String: String]) -> (token: String, userID: String?)? {
+            if let session = storage["auth1_session"], let found = auth1(in: session) { return found }
+            if let flat = storage["devin_auth1_token"].flatMap(unquote), flat.count > 20 {
+                return (flat, nil)
+            }
 
             for value in storage.values.sorted() {
-                if let token = auth1(in: value) { return token }
+                if let found = auth1(in: value) { return found }
             }
             for value in storage.values.sorted() {
                 guard let object = object(in: value),
                       let token = object["access_token"] as? String, token.count > 20
                 else { continue }
-                return token
+                return (token, object["userId"] as? String)
             }
             return nil
         }
 
-        private static func auth1(in value: String) -> String? {
+        private static func auth1(in value: String) -> (token: String, userID: String?)? {
             guard let object = object(in: value), let token = object["token"] as? String,
                   token.hasPrefix("auth1_"), token.count > 20
             else { return nil }
-            return token
+            return (token, object["userId"] as? String)
         }
 
         /// The internal id, which is what the account's own pages are scoped
@@ -317,6 +431,34 @@ struct DevinUsageService: Sendable {
             return String(organization.dropFirst("organizations/".count))
         }
 
+        /// The scope the endpoint's figures belong to.
+        ///
+        /// **The organization is part of it, and that is the point.** The
+        /// endpoint is organization-scoped: two sessions can share a user id
+        /// and be different organizations' allowances, so a shared `userId` is
+        /// not enough to fuse them. The identity is the browser session's user
+        /// id where there is one, and otherwise a hash of the pasted credential
+        /// — **never the credential itself** — so the same pasted token's
+        /// readings stay together and a different token's do not.
+        var endpointScope: UsageScope {
+            let namedAccount = accountID.flatMap {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+            }
+            return UsageScope(
+                route: .endpoint,
+                organization: organization,
+                identity: namedAccount ?? Self.fingerprint(of: token)
+            )
+        }
+
+        /// SHA-256 of the credential, as hex. A stable name for a pasted token
+        /// that is not the token and cannot be turned back into it here.
+        private static func fingerprint(of value: String) -> String {
+            SHA256.hash(data: Data(value.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+        }
+
         /// The paths to try, in order. The API is undocumented and the shape
         /// of this one segment is the part CodexBar found varies, so a 404 on
         /// the first spelling is tried again as the others rather than
@@ -385,7 +527,7 @@ struct DevinUsageService: Sendable {
     /// CodexBar found it varies — so each spelling is tried in turn.
     static func live(_ credential: Credential) async -> ProviderUsage {
         guard !credential.paths.isEmpty else {
-            return .unavailable(.devin, reason: .devinOrganizationMissing)
+            return scoped(.unavailable(.devin, reason: .devinOrganizationMissing), credential)
         }
 
         var lastReason = ProviderUsage.Unavailability.unreachable
@@ -393,39 +535,46 @@ struct DevinUsageService: Sendable {
             switch await get(path, credential) {
             case .reply(let data):
                 guard let reply = Reply(json: data) else {
-                    return .unavailable(.devin, reason: .unreadableReply)
+                    return scoped(.unavailable(.devin, reason: .unreadableReply), credential)
                 }
                 let windows = Self.windows(from: reply)
                 guard !windows.isEmpty || reply.overageBalance != nil else {
-                    return .unavailable(.devin, reason: .noLimitsReported)
+                    return scoped(.unavailable(.devin, reason: .noLimitsReported), credential)
                 }
-                return ProviderUsage(
+                return scoped(ProviderUsage(
                     account: AccountKey(.devin),
                     windows: windows,
                     observedAt: Date(),
                     state: .live,
-                    // The reply names no plan. The row the app saved does, and
-                    // it is the same account — so the card keeps its plan line
-                    // rather than losing it to the better route.
-                    plan: reply.planName ?? savedPlanName(),
+                    // **Only the reply's own plan name.** The row the app saved
+                    // may name one, but it names no organization — and the
+                    // endpoint is scoped to one — so there is no way to know
+                    // the two are the same allowance. A plan line borrowed
+                    // across organizations is the same invention as a figure
+                    // taken from one.
+                    plan: reply.planName,
                     creditBalance: reply.overageBalance.map(money)
-                )
+                ), credential)
             case .failed(let reason):
                 // A refused token is refused at every spelling of the path;
                 // only a path that was not found is worth trying again.
-                guard reason == .serverError else { return .unavailable(.devin, reason: reason) }
+                guard reason == .serverError else {
+                    return scoped(.unavailable(.devin, reason: reason), credential)
+                }
                 lastReason = reason
             }
         }
-        return .unavailable(.devin, reason: lastReason)
+        return scoped(.unavailable(.devin, reason: lastReason), credential)
     }
 
-    /// The plan name out of the app's own saved row, for the endpoint to
-    /// borrow. Nil where the app has never run here, which is not a failure:
-    /// the card simply has no plan line.
-    private static func savedPlanName() -> String? {
-        guard let support = supportDirectory() else { return nil }
-        return plan(in: support.appending(path: "User/globalStorage/state.vscdb"))?.planName
+    /// Stamps a reading with the account and organization its endpoint route
+    /// was scoped to, so the cache holds one allowance's figures apart from
+    /// another's even across a relaunch. Applied to every return, failures
+    /// included — a failure still has to say which scope it failed in.
+    private static func scoped(_ usage: ProviderUsage, _ credential: Credential) -> ProviderUsage {
+        var copy = usage
+        copy.sourceScope = credential.endpointScope
+        return copy
     }
 
     private enum Fetch {
@@ -470,8 +619,9 @@ struct DevinUsageService: Sendable {
     ///   "is_quota_plan": true, "overage_balance": 10 }
     /// ```
     ///
-    /// **It names no plan**, so the card's plan line comes from the row the
-    /// app saved — the one place on this Mac that has one.
+    /// **This captured reply names no plan.** The card leaves that line absent
+    /// unless the endpoint itself supplies one; the app's row has no matching
+    /// organization evidence and cannot lend its plan name.
     ///
     /// CodexBar reads a value of 1 or less as a fraction and multiplies it by a
     /// hundred. **Deliberately not copied.** A genuine 0.4% used would then be
@@ -565,7 +715,7 @@ struct DevinUsageService: Sendable {
 
     // MARK: - The file
 
-    private static func supportDirectory() -> URL? {
+    private static func defaultSupportDirectory() -> URL? {
         let support = URL(fileURLWithPath: NSHomeDirectory()).appending(path: "Library/Application Support")
         let manager = FileManager.default
 
@@ -583,7 +733,7 @@ struct DevinUsageService: Sendable {
     /// an existing file leaves it alone, but a log file created an hour into
     /// the session bumps it, and every minute it gains is a minute the card
     /// under-reports the age of a reading that has not changed since launch.
-    /// The date is kept as the fallback for a name that stops parsing.
+    /// An unparseable name carries no launch evidence and is ignored.
     ///
     /// **Not the database's own modification date**, which every other key in
     /// the file keeps current — a reading from breakfast would look a second
@@ -591,20 +741,28 @@ struct DevinUsageService: Sendable {
     private static func lastLaunch(in support: URL) -> Date? {
         let logs = support.appending(path: "logs")
         guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: logs, includingPropertiesForKeys: [.contentModificationDateKey]
+            at: logs, includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return nil }
 
-        return entries.compactMap { launchStamp($0.lastPathComponent) ?? modified($0) }.max()
+        return entries.compactMap { entry -> Date? in
+            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return launchStamp(entry.lastPathComponent)
+        }.max()
     }
 
     /// `20260914T092003`, written in local time and with no zone on it — which
     /// is why the formatter is given this Mac's own rather than left at UTC.
     static func launchStamp(_ name: String) -> Date? {
+        guard name.count == 15 else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone.current
         formatter.dateFormat = "yyyyMMdd'T'HHmmss"
-        return formatter.date(from: name)
+        formatter.isLenient = false
+        guard let date = formatter.date(from: name), formatter.string(from: date) == name else { return nil }
+        return date
     }
 
     private static func modified(_ url: URL) -> Date? {
@@ -631,26 +789,39 @@ struct DevinUsageService: Sendable {
 
         var found: [Plan] = []
         for pattern in planKeyPatterns {
-            found += rows(handle, pattern).compactMap(Plan.init(json:))
+            found += rows(handle, pattern).compactMap { row in
+                Plan(json: row.value, accountID: Self.accountID(fromKey: row.key))
+            }
             if !found.isEmpty { break }
         }
 
         return found.max { ($0.endTimestamp ?? 0) < ($1.endTimestamp ?? 0) }
     }
 
-    private static func rows(_ handle: OpaquePointer?, _ pattern: String) -> [Data] {
+    /// The account a row belongs to, out of its key. The newer key ends
+    /// `:user-<32 hex>`; the older `windsurf.settings.cachedPlanInfo` has no
+    /// suffix and names no one, so it is nil rather than a guess.
+    static func accountID(fromKey key: String) -> String? {
+        guard let colon = key.lastIndex(of: ":") else { return nil }
+        let suffix = String(key[key.index(after: colon)...])
+        return suffix.isEmpty ? nil : suffix
+    }
+
+    private static func rows(_ handle: OpaquePointer?, _ pattern: String) -> [(key: String, value: Data)] {
         var statement: OpaquePointer?
-        let sql = "SELECT value FROM ItemTable WHERE key LIKE ?"
+        let sql = "SELECT key, value FROM ItemTable WHERE key LIKE ?"
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
 
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(statement, 1, pattern, -1, transient)
 
-        var values: [Data] = []
+        var values: [(key: String, value: Data)] = []
         while sqlite3_step(statement) == SQLITE_ROW {
-            guard let bytes = sqlite3_column_text(statement, 0) else { continue }
-            values.append(Data(String(cString: bytes).utf8))
+            guard let key = sqlite3_column_text(statement, 0),
+                  let bytes = sqlite3_column_text(statement, 1)
+            else { continue }
+            values.append((String(cString: key), Data(String(cString: bytes).utf8)))
         }
         return values
     }
@@ -664,6 +835,10 @@ struct DevinUsageService: Sendable {
     /// its window, not the whole reading.
     struct Plan: Equatable, Sendable {
         var planName: String?
+        /// The account this row was written for, out of the key's suffix
+        /// (`…cachedPlanInfoData:user-<32 hex>`) rather than out of the JSON,
+        /// which does not carry one. Nil for the older key, which names no one.
+        var accountID: String?
         var dailyRemainingPercent: Double?
         var weeklyRemainingPercent: Double?
         var dailyResetAtUnix: Double?
@@ -678,11 +853,12 @@ struct DevinUsageService: Sendable {
         /// Micros, as the field's name says: 10,000,000 is ten dollars.
         var overageBalance: Double? { overageBalanceMicros.map { $0 / 1_000_000 } }
 
-        init?(json data: Data) {
+        init?(json data: Data, accountID: String? = nil) {
             guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return nil
             }
             planName = (object["planName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            self.accountID = accountID
             dailyRemainingPercent = Self.number(object["dailyRemainingPercent"])
             weeklyRemainingPercent = Self.number(object["weeklyRemainingPercent"])
             dailyResetAtUnix = Self.number(object["dailyResetAtUnix"])
