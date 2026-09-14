@@ -71,13 +71,32 @@ struct SettingsView: View {
     @FocusState private var credentialFocused: Bool
     @State private var repairMessages: [String: String] = [:]
     @State private var connectionFocusRequest = 0
+    /// Every agent's spending, for the pane that is not about one provider.
+    /// Its own state rather than something derived from `ledgers`, which is
+    /// filled one account at a time as their panes are opened.
+    @State private var spend = SpendSummary()
+    @State private var spendSpan = SpendSpan.default
+    @State private var isScanningSpend = false
+    /// The agent the spend pane is looking at on its own, and that agent's own
+    /// figures. Kept beside the combined ones rather than derived on the fly:
+    /// both come out of the same ledgers and the same span, so they cannot
+    /// disagree about what a month is.
+    @State private var spendFocus: SpendAgent?
+    @State private var focusedSpend = SpendSummary()
+    @State private var spendLedgers: [SpendAgent: UsageLedger] = [:]
 
     var body: some View {
         NavigationSplitView {
             List(selection: $navigation.pane) {
-                if matches(.general) {
+                if matches(.general) || matches(.spend) {
                     Section(String.localized("Panel")) {
-                        row(.general)
+                        if matches(.general) { row(.general) }
+                        // Above the accounts, not below them. Eighteen
+                        // provider rows is more than a sidebar shows at once,
+                        // and a pane whose whole subject is "all of them
+                        // together" was landing under the fold — reachable
+                        // only by scrolling past the thing it summarises.
+                        if matches(.spend) { row(.spend) }
                     }
                 }
 
@@ -121,7 +140,8 @@ struct SettingsView: View {
                 prompt: Text(localized: "Search")
             )
             .overlay {
-                if isSearching, matchingAccounts.isEmpty, !matches(.general), !matches(.about), !matches(.integrations) {
+                if isSearching, matchingAccounts.isEmpty, !matches(.general), !matches(.spend),
+                   !matches(.about), !matches(.integrations) {
                     Text(localized: "No matches")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -137,6 +157,15 @@ struct SettingsView: View {
                         switch pane {
                         case .general: general
                         case .account(let account): accountPane(account)
+                        case .spend:
+                            TokenSpendView(
+                                summary: spend,
+                                focus: $spendFocus,
+                                focused: focusedSpend,
+                                span: $spendSpan,
+                                isLoading: isScanningSpend,
+                                refresh: { Task { await loadSpend(refresh: true) } }
+                            )
                         case .about: about
                         case .integrations: DeveloperIntegrationsView(settings: settings)
                         }
@@ -148,6 +177,16 @@ struct SettingsView: View {
                 // Keyed on the pane and enabled state, so enabling an account
                 // also reconsiders its history's empty-state explanation.
                 .task(id: historyKey) { await loadHistory() }
+                // Opening the pane reads; changing the span only re-adds up
+                // what has already been read, which is why the refresh is not
+                // forced here and is a button instead.
+                // **Two tasks, because they cost different things.** Reading
+                // every agent's store is seconds on a cold launch; adding the
+                // numbers up again for a different span is microseconds. Keyed
+                // together, changing the span put the spinner back on screen
+                // and made a cached read look like a rescan.
+                .task(id: spendLoadKey) { await loadSpend() }
+                .onChange(of: spendKey) { _, _ in recomputeSpend() }
                 .onChange(of: connectionFocusRequest) {
                     proxy.scrollTo("connection", anchor: .top)
                     credentialFocused = true
@@ -222,7 +261,7 @@ struct SettingsView: View {
             switch pane {
             case .account(let account):
                 LobeIconView(provider: account.provider, size: 14)
-            case .general, .about, .integrations:
+            case .general, .spend, .about, .integrations:
                 Image(systemName: pane.symbol)
             }
         }
@@ -1142,6 +1181,56 @@ struct SettingsView: View {
     private var historyKey: String {
         guard case .account(let account) = pane else { return "\(pane)" }
         return "\(account.id)|\(settings.isEnabled(account))"
+    }
+
+    /// What the combined figures depend on: the pane being open, and how far
+    /// back it is counting.
+    /// What a *read* depends on: only whether the pane is open.
+    private var spendLoadKey: String {
+        if case .spend = pane { return "spend" }
+        return "-"
+    }
+
+    /// What the *figures* depend on, which is read back out of what was loaded.
+    private var spendKey: String {
+        guard case .spend = pane else { return "-" }
+        return "\(spendSpan.rawValue)|\(spendFocus?.rawValue ?? "")"
+    }
+
+    /// Every agent's ledger, added up.
+    ///
+    /// **Rescanning is the button, not the default.** Going through a few
+    /// hundred megabytes of transcripts on every pane switch would make this
+    /// the slowest thing in the window; `UsageLedgerReader` already caches one
+    /// ledger per provider, and reusing them is arithmetic.
+    private func loadSpend(refresh: Bool = false) async {
+        guard case .spend = pane else { return }
+        // Nothing to say about a read that is already in hand: the actor's
+        // own cache answers, and flipping the spinner for it is what made a
+        // cached page look like a rescan.
+        let wasEmpty = spendLedgers.isEmpty
+        if wasEmpty || refresh { isScanningSpend = true }
+        defer { isScanningSpend = false }
+
+        // Every agent that has left a record on this Mac, which is a wider
+        // list than the providers with rings: `AgentLedgers` delegates the two
+        // Pulse already reads and parses the rest itself.
+        let ledgers = await AgentLedgers.shared.ledgers(refresh: refresh)
+        guard !Task.isCancelled else { return }
+
+        spendLedgers = ledgers
+        recomputeSpend()
+    }
+
+    /// The same function over the same ledgers, twice: once for everything and
+    /// once for the agent being looked at. Deriving the second from the first
+    /// would mean a second way of counting a span, and two ways of counting
+    /// one thing eventually disagree.
+    private func recomputeSpend() {
+        spend = SpendSummary.of(spendLedgers, overLast: spendSpan.days)
+        focusedSpend = spendFocus.map { agent in
+            SpendSummary.of(spendLedgers.filter { $0.key == agent }, overLast: spendSpan.days)
+        } ?? SpendSummary()
     }
 
     private func loadHistory() async {
@@ -2202,12 +2291,19 @@ struct SettingsView: View {
 enum SettingsPane: Hashable {
     case general
     case account(AccountKey)
+    /// Every agent's spending added up — a pane whose subject is not a
+    /// provider, which is why it sits outside the accounts rather than inside
+    /// one of them.
+    case spend
     case about
     case integrations
 
     var title: String {
         switch self {
         case .general: .localized("General")
+        // Not "Usage history", which is what a provider's own card is called.
+        // Two panes with one name is two places to look for one thing.
+        case .spend: .localized("Token spend")
         // Brand names, left as they are in every language.
         // A fallback: the view titles these from the account's own label.
         case .account(let account): account.provider.displayName
@@ -2221,6 +2317,7 @@ enum SettingsPane: Hashable {
     var symbol: String {
         switch self {
         case .general: "slider.horizontal.3"
+        case .spend: "chart.bar"
         case .account: "square.stack.3d.up"
         case .about: "info.circle"
         case .integrations: "terminal"

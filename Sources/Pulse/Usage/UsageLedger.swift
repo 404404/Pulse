@@ -41,6 +41,15 @@ struct LedgerDay: Identifiable, Sendable, Equatable {
     /// Tokens by model, so "which model is doing the work" can be answered
     /// over any span rather than only the one totalled at scan time.
     let models: [String: Int]
+    /// The same day split by **kind** of token — fresh input, cache written,
+    /// cache read, output.
+    ///
+    /// Carried rather than recomputed because the scan already has it: the
+    /// cache keeps a `TokenTally` per model per quarter-hour and this used to
+    /// throw three quarters of it away on the way to a single total. It is
+    /// what separates "I sent a lot" from "I re-read a lot", which are priced
+    /// an order of magnitude apart.
+    var tally = TokenTally()
 
     var id: Date { date }
 }
@@ -94,6 +103,35 @@ struct UsageLedger: Sendable, Equatable {
     let modelNames: [String: String]
     /// Ascending by start time. Only slots with work in them.
     let slots: [Slot]
+    /// One per transcript file, which is one per session of that CLI.
+    ///
+    /// **Free, or nearly.** The scan already keys its cache by file path and
+    /// already holds every file's own buckets; this is the same numbers rolled
+    /// up a second way instead of being merged and forgotten.
+    var sessions: [Session] = []
+
+    /// One transcript: one conversation with the CLI.
+    struct Session: Identifiable, Sendable, Equatable {
+        /// The file's path, which is unique and stable.
+        let id: String
+        /// What the CLI called it — a uuid for Claude Code, a timestamped
+        /// rollout name for Codex. Shown because it is what the file is
+        /// called, not because it means anything.
+        let name: String
+        /// What the conversation was called: the title the user set, else the
+        /// words it opened with. Nil for a transcript that carries neither.
+        let title: String?
+        /// The working directory the session ran in, where the path says.
+        ///
+        /// Taken from the `cwd` the transcript states, which both CLIs
+        /// write — so this is the directory's real name rather than the
+        /// folder-name heuristic it replaced.
+        let project: String?
+        let start: Date
+        let end: Date
+        let tokens: Int
+        let cost: Double
+    }
 
     static let empty = UsageLedger(
         days: [], earliest: nil, unpricedModels: [], modelNames: [:], slots: []
@@ -176,16 +214,51 @@ actor UsageLedgerReader {
     func ledger(for provider: Provider, refresh: Bool = false) async -> UsageLedger {
         if !refresh, let cached = cached[provider] { return cached }
 
-        let buckets = scan(provider)
+        let scanned = scan(provider)
         let prices = await ModelPrices.shared.prices()
-        let ledger = price(buckets, with: prices)
+        var ledger = Self.priced(scanned.buckets, with: prices, calendar: .current)
+        ledger.sessions = sessions(scanned.files, provider: provider, prices: prices)
         cached[provider] = ledger
         return ledger
     }
 
     // MARK: - Pricing
 
-    private func price(_ buckets: Buckets, with prices: [String: ModelPrice]) -> UsageLedger {
+    /// The quarter-hour a moment falls in, as the key the buckets are held
+    /// under. Shared with the readers that take their counts from a database
+    /// rather than from a transcript, so every agent's day is cut the same way.
+    nonisolated static func slotKey(for date: Date, calendar: Calendar = .current) -> String {
+        let quarter = 15.0 * 60
+        let floored = Date(timeIntervalSince1970: (date.timeIntervalSince1970 / quarter).rounded(.down) * quarter)
+        return sharedSlotFormatter.string(from: floored)
+    }
+
+    nonisolated static let sharedSlotFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter
+    }()
+
+    nonisolated static func price(
+        _ buckets: [String: [String: TokenTally]],
+        with prices: [String: ModelPrice],
+        calendar: Calendar = .current
+    ) -> UsageLedger {
+        priced(buckets, with: prices, calendar: calendar)
+    }
+
+    /// Turns buckets into days, slots and money.
+    ///
+    /// **Static and free of instance state**, so the readers that take their
+    /// counts out of a database can price them exactly as the transcripts are
+    /// priced. Two ways of turning tokens into dollars in one app is two
+    /// figures that eventually disagree.
+    nonisolated private static func priced(
+        _ buckets: Buckets,
+        with prices: [String: ModelPrice],
+        calendar: Calendar
+    ) -> UsageLedger {
         guard !buckets.isEmpty else { return .empty }
 
         var unpriced: Set<String> = []
@@ -198,10 +271,10 @@ actor UsageLedgerReader {
         var dayCost: [Date: Double] = [:]
         var dayUnpriced: [Date: Int] = [:]
         var dayModels: [Date: [String: Int]] = [:]
-        let calendar = Calendar.current
+        var dayTally: [Date: TokenTally] = [:]
 
         for (key, models) in buckets {
-            guard let start = slotFormatter.date(from: key) else { continue }
+            guard let start = sharedSlotFormatter.date(from: key) else { continue }
 
             var tokens = 0
             var cost = 0.0
@@ -210,6 +283,7 @@ actor UsageLedgerReader {
             for (model, tally) in models {
                 tokens += tally.total
                 dayModels[calendar.startOfDay(for: start), default: [:]][model, default: 0] += tally.total
+                dayTally[calendar.startOfDay(for: start), default: TokenTally()] = (dayTally[calendar.startOfDay(for: start)] ?? TokenTally()) + tally
 
                 if let price = prices[model] {
                     cost += tally.cost(at: price)
@@ -235,7 +309,8 @@ actor UsageLedgerReader {
                 tokens: tokens,
                 cost: dayCost[day] ?? 0,
                 unpricedTokens: dayUnpriced[day] ?? 0,
-                models: dayModels[day] ?? [:]
+                models: dayModels[day] ?? [:],
+                tally: dayTally[day] ?? TokenTally()
             )
         }
 
@@ -265,7 +340,7 @@ actor UsageLedgerReader {
 
     // MARK: - Scanning
 
-    private func scan(_ provider: Provider) -> Buckets {
+    private func scan(_ provider: Provider) -> (buckets: Buckets, files: [String: FileCache.Entry]) {
         var cache = FileCache.load(for: provider)
         var buckets: Buckets = [:]
         var fresh: [String: FileCache.Entry] = [:]
@@ -280,7 +355,10 @@ actor UsageLedgerReader {
             if let known = cache.files[key], known.stamp == stamp {
                 entry = known
             } else {
-                entry = FileCache.Entry(stamp: stamp, days: parse(file, provider: provider))
+                let scanned = parse(file, provider: provider)
+                entry = FileCache.Entry(
+                    stamp: stamp, days: scanned.days, title: scanned.title, cwd: scanned.cwd
+                )
             }
 
             fresh[key] = entry
@@ -293,7 +371,73 @@ actor UsageLedgerReader {
 
         cache.files = fresh
         cache.save(for: provider)
-        return buckets
+        return (buckets, fresh)
+    }
+
+    /// One row per transcript, priced the same way the days are.
+    ///
+    /// The cache is keyed by path and holds each file's own buckets, so this
+    /// is a second rollup of numbers already in hand rather than another pass
+    /// over the transcripts.
+    private func sessions(
+        _ files: [String: FileCache.Entry],
+        provider: Provider,
+        prices: [String: ModelPrice]
+    ) -> [UsageLedger.Session] {
+        var sessions: [UsageLedger.Session] = []
+
+        for (path, entry) in files {
+            var tokens = 0
+            var cost = 0.0
+            var start: Date?
+            var end: Date?
+
+            for (key, models) in entry.days {
+                guard let at = slotFormatter.date(from: key) else { continue }
+                start = min(start ?? at, at)
+                end = max(end ?? at, at)
+
+                for (model, tally) in models {
+                    tokens += tally.total
+                    if let price = prices[model] { cost += tally.cost(at: price) }
+                }
+            }
+
+            guard tokens > 0, let start, let end else { continue }
+
+            let url = URL(fileURLWithPath: path)
+            sessions.append(
+                UsageLedger.Session(
+                    id: path,
+                    name: url.deletingPathExtension().lastPathComponent,
+                    title: entry.title,
+                    project: entry.cwd.map { URL(fileURLWithPath: $0).lastPathComponent }
+                        ?? Self.project(of: url, provider: provider),
+                    start: start,
+                    end: end,
+                    tokens: tokens,
+                    cost: cost
+                )
+            )
+        }
+
+        return sessions.sorted { $0.end > $1.end }
+    }
+
+    /// The fallback for a transcript that states no `cwd`.
+    ///
+    /// Claude Code names a project's directory for its path with every
+    /// separator replaced by a dash (`-Users-me-Code-Pulse`), and the last
+    /// segment of that is the best guess available — it is a guess, which is
+    /// why the stated `cwd` is preferred wherever there is one. Codex files
+    /// sit under a date and carry no directory in the path at all.
+    static func project(of file: URL, provider: Provider) -> String? {
+        guard provider == .claudeCode else { return nil }
+
+        let folder = file.deletingLastPathComponent().lastPathComponent
+        let parts = folder.split(separator: "-", omittingEmptySubsequences: true)
+        guard let last = parts.last.map(String.init), !last.isEmpty else { return nil }
+        return last
     }
 
     private static func logFiles(for provider: Provider) -> [URL] {
@@ -319,21 +463,66 @@ actor UsageLedgerReader {
         return walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }
     }
 
-    private func parse(_ file: URL, provider: Provider) -> [String: [String: TokenTally]] {
-        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return [:] }
+    /// What a transcript says about itself: what it was called and where it
+    /// ran, beside the counts.
+    ///
+    /// Both come out of the same pass and are cached with it. Reading them
+    /// later would mean opening every file again — a few hundred megabytes for
+    /// two short strings.
+    struct Scanned: Codable {
+        var days: [String: [String: TokenTally]] = [:]
+        /// The conversation's own name, where the CLI keeps one.
+        var title: String?
+        /// The directory it ran in, as the transcript states it. **Not decoded
+        /// from the folder name**: Claude Code names its project folders for
+        /// the path with every separator replaced by a dash, which cannot be
+        /// reversed — a folder whose own name contains a dash is
+        /// indistinguishable from a separator, and this Mac has several.
+        var cwd: String?
+    }
+
+    private func parse(_ file: URL, provider: Provider) -> Scanned {
+        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return Scanned() }
 
         switch provider {
         case .claudeCode: return parseClaudeCode(data)
         case .codex: return parseCodex(data)
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .volcengine, .commandCode, .deepSeek, .devin: return [:]
+             .volcengine, .commandCode, .deepSeek, .devin: return Scanned()
         }
+    }
+
+    /// The opening prompt, cut to something a row can hold.
+    ///
+    /// **Not the whole message.** These are the user's own words and a row is
+    /// one line; the point is to tell one conversation from another, which the
+    /// first few words do.
+    static func title(from text: String) -> String? {
+        let cleaned = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        // A pasted file or a command envelope is not a title.
+        guard !cleaned.hasPrefix("<"), !cleaned.hasPrefix("Caveat:") else { return nil }
+        return cleaned.count <= 70 ? cleaned : String(cleaned.prefix(69)) + "…"
+    }
+
+    /// The first run of text in a message body, which is a string in the
+    /// simple case and an array of typed parts in the rich one.
+    static func text(in message: Any?) -> String? {
+        if let text = message as? String { return text }
+        guard let parts = message as? [[String: Any]] else { return nil }
+        for part in parts {
+            if let text = part["text"] as? String, !text.isEmpty { return text }
+        }
+        return nil
     }
 
     /// Claude Code writes one JSON object per message, each assistant reply
     /// carrying the token counts for the request that produced it.
-    private func parseClaudeCode(_ data: Data) -> [String: [String: TokenTally]] {
+    private func parseClaudeCode(_ data: Data) -> Scanned {
+        var scanned = Scanned()
         var days: [String: [String: TokenTally]] = [:]
         // Retries and resumed sessions can write the same reply twice; the
         // message id identifies it. This only catches repeats within a file,
@@ -341,6 +530,30 @@ actor UsageLedgerReader {
         var seen: Set<String> = []
 
         for line in data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true) {
+            // What the session is called and where it ran. Both are cheap
+            // substring tests first, so the ordinary line is never parsed
+            // twice.
+            if scanned.title == nil || scanned.cwd == nil {
+                if contains(line, "\"customTitle\"") || contains(line, "\"cwd\"") {
+                    if let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
+                        if scanned.cwd == nil, let cwd = root["cwd"] as? String, !cwd.isEmpty {
+                            scanned.cwd = cwd
+                        }
+                        // A title the user set outranks the opening prompt.
+                        if let custom = root["customTitle"] as? String, let title = Self.title(from: custom) {
+                            scanned.title = title
+                        } else if scanned.title == nil,
+                                  root["type"] as? String == "user",
+                                  root["isSidechain"] as? Bool != true,
+                                  let message = root["message"] as? [String: Any],
+                                  let text = Self.text(in: message["content"]),
+                                  let title = Self.title(from: text) {
+                            scanned.title = title
+                        }
+                    }
+                }
+            }
+
             guard
                 contains(line, "\"usage\""),
                 let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
@@ -370,7 +583,8 @@ actor UsageLedgerReader {
             days[slot, default: [:]][model] = (days[slot]?[model] ?? TokenTally()) + tally
         }
 
-        return days
+        scanned.days = days
+        return scanned
     }
 
     /// Codex reports a running total for the session rather than a figure per
@@ -378,12 +592,36 @@ actor UsageLedgerReader {
     /// running total only ever climbs, which makes the differences safe to add
     /// up — and it sidesteps the duplicate readings that summing Codex's own
     /// per-turn field would double-count.
-    private func parseCodex(_ data: Data) -> [String: [String: TokenTally]] {
+    private func parseCodex(_ data: Data) -> Scanned {
+        var scanned = Scanned()
         var days: [String: [String: TokenTally]] = [:]
         var model: String?
         var previous: [String: Int]?
 
         for line in data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: true) {
+            if scanned.title == nil || scanned.cwd == nil {
+                // The directory is stated once in the session header; the
+                // opening prompt is a `response_item` whose payload is a
+                // message with the user's role on it — **not** an `event_msg`,
+                // which is what the first attempt looked for and why every
+                // Codex session came out unnamed.
+                if contains(line, "\"cwd\"") || contains(line, "\"\"role\":\"user\"\"") || contains(line, "\"role\":\"user\"") {
+                    if let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                       let payload = root["payload"] as? [String: Any] {
+                        if scanned.cwd == nil, let cwd = payload["cwd"] as? String, !cwd.isEmpty {
+                            scanned.cwd = cwd
+                        }
+                        if scanned.title == nil,
+                           payload["type"] as? String == "message",
+                           payload["role"] as? String == "user",
+                           let text = Self.text(in: payload["content"]),
+                           let title = Self.title(from: text) {
+                            scanned.title = title
+                        }
+                    }
+                }
+            }
+
             let isCount = contains(line, "\"token_count\"")
             guard isCount || contains(line, "\"model\"") else { continue }
             guard let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
@@ -427,7 +665,8 @@ actor UsageLedgerReader {
             days[slot, default: [:]][model] = (days[slot]?[model] ?? TokenTally()) + tally
         }
 
-        return days
+        scanned.days = days
+        return scanned
     }
 
     // MARK: - Line helpers
@@ -490,6 +729,11 @@ private struct FileCache: Codable {
     struct Entry: Codable {
         let stamp: Stamp
         let days: [String: [String: TokenTally]]
+        /// What the transcript called itself, and where it ran. Optional
+        /// because a file can carry neither — and because the cache on disk
+        /// predates them.
+        var title: String?
+        var cwd: String?
     }
 
     var files: [String: Entry] = [:]
@@ -512,6 +756,11 @@ private struct FileCache: Codable {
         // The `2` is the bucket format. Quarter-hours replaced whole days, and
         // an old file's keys would parse as nothing at all — silently, which
         // is the worst way for a cache to be wrong.
-        PulseStorage.directory.appending(path: "ledger-2-\(provider.rawValue).json")
+        // **The number is part of the contract.** Entries now carry a title
+        // and a working directory; a cache written by an earlier build still
+        // decodes, and would then hand back every session unnamed for ever,
+        // because a file that has not changed is never read again. Renaming
+        // the file is what forces the one rescan that fills them in.
+        PulseStorage.directory.appending(path: "ledger-3-\(provider.rawValue).json")
     }
 }

@@ -51,6 +51,7 @@ Treat remaining warnings as failures. macOS 14+, Swift tools 6.0, no linter. **`
 | Glass, rings, colour, activity mark | [Docs/ui/rings-and-surface.md](Docs/ui/rings-and-surface.md) |
 | Settings window copy/layout | [Docs/ui/settings.md](Docs/ui/settings.md) |
 | Refresh, cache, activity, ledger | [Docs/refresh-and-data.md](Docs/refresh-and-data.md) |
+| Token spend pane, agents, spend readers | [Docs/token-spend.md](Docs/token-spend.md) |
 | Notifications, alert rules | [Docs/notifications.md](Docs/notifications.md) |
 | What is tested, fixtures | [Docs/testing.md](Docs/testing.md) |
 | `--json` output contract | [Docs/json-output.md](Docs/json-output.md) |
