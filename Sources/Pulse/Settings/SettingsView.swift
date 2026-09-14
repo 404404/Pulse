@@ -481,7 +481,7 @@ struct SettingsView: View {
                     String.localized("Turn red at"),
                     subtitle: String.localized("Where a ring stops being amber. A spent limit is red whatever this says.")
                 ) {
-                    Picker("", selection: Binding(
+                    Picker(String.localized("Turn red at"), selection: Binding(
                         get: { settings.warningThreshold },
                         set: { settings.warningThreshold = $0 }
                     )) {

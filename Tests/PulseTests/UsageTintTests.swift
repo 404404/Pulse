@@ -21,6 +21,14 @@ struct UsageTintTests {
         #expect(Self.colour(0.61, warningAt: .sixty) == .pulseWarning)
     }
 
+    @Test("red starts at the selected threshold, not one step after it")
+    func warningBoundary() {
+        for threshold in WarningThreshold.allCases {
+            #expect(Self.colour(threshold.fraction.nextDown, warningAt: threshold) == .pulseCaution)
+            #expect(Self.colour(threshold.fraction, warningAt: threshold) == .pulseWarning)
+        }
+    }
+
     @Test("the caution step does not move with it")
     func cautionStaysPut() {
         for threshold in WarningThreshold.allCases {
