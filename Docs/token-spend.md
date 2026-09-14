@@ -38,9 +38,24 @@ Paths worth reading if somebody turns up with one of the rest are in tokscale's 
 ## What the readers agree on
 
 - **Money is `ModelPrices`, always.** OpenCode's store keeps its own `cost` column and it is ignored: it is whatever that app believed at the time, is zero for a plan it has no rate for, and mixing it in would put two differently-sourced figures in one total.
-- **A model with no published price is counted and not costed.** Four of the seven agents come out at $0.00 on this machine for exactly that reason. The tokens are real and the money is absent, which is the honest pair.
+- **A model with no published price is counted and not costed**, and the spelling is resolved first. See below.
+- **`ModelPrices` covers twelve vendors, not two.** It was Anthropic and OpenAI while only the two CLIs were read, which put four of the seven agents at $0.00 for no better reason than that their vendor was missing — along with every third-party model the two CLIs were pointed at. Ids are unique within a vendor and not across all 213 of them, so the list is deliberate and ordered; `github-copilot` is left out because it re-lists other vendors' models and Pulse reads no Copilot transcripts.
 - **Reasoning tokens count as output**, where every price list bills them.
 - **Quarter-hour buckets and one pricing function.** `UsageLedgerReader.slotKey` and `.price` are shared, so an agent read out of a database is bucketed and priced exactly as a transcript is. Two ways of turning tokens into dollars in one app is two figures that eventually disagree.
+
+## One model, several spellings
+
+The agents do not all write a model id the same way, and a name that misses the table is not a free model — it is a bill that quietly reads zero. `ModelPrices.price(for:in:)` resolves, in order: the id as written, the same id case-folded, then a short list of **aliases, each one a named product's known habit**:
+
+| Written | Means | Whose habit |
+|---|---|---|
+| `grok-4.6-build` | `grok-4.6` | Grok Build tags its own build |
+| `k3-256k`, `kimi-k3-256k` | `kimi-k3` | a context window is the same model with more room |
+| `k3`, `k2p6` | `kimi-k3`, `kimi-k2.6` | Kimi's CLI abbreviates the version |
+| `gpt-5-6-sol-medium` | `gpt-5.6-sol` | Devin writes dashes for dots and an effort on the end |
+| `minimax-m3` | `MiniMax-M3` | case only |
+
+**Rules, not fuzzy matching.** The failure mode of a loose match is a model priced at another model's rate, which is a wrong number that looks right; `grok-build-0.1` is a real xAI model and must not be stripped into `grok`. A lookup that still misses stays unpriced — eleven ids on this machine do, and four of those are `…-free` models that genuinely cost nothing.
 
 ## Titles and projects come from the transcript
 
@@ -55,7 +70,7 @@ Two layers, and they answer different costs:
 - `UsageLedgerReader` caches **per transcript file** (`ledger-3-*.json`), keyed on size and modification date, and prices afresh each read — so a price change costs nothing and does not mean rescanning hundreds of megabytes.
 - `AgentLedgers` caches **the whole ledger** per agent (`agent-1-*.json`), keyed on the store's own size and date. These stores are single files that are re-read whole or not at all, so there is nothing finer to keep.
 
-**The cache file's number is part of the contract.** `ledger-2-` became `ledger-3-` when entries gained a title and a working directory: an older cache still decodes, and every unchanged file would then stay unnamed for ever, because a file that has not changed is never read again. Renaming forces the one rescan that fills them in.
+**A cache file's number is part of the contract**, and two moved for this feature. `model-prices-2-` became `-3-` when the vendor list grew from two to twelve: a `2` decodes perfectly and holds only two vendors' models, so everything else would stay unpriced for a day and then another day, because the cache is rewritten on the same schedule whatever is in it. `ledger-2-` became `ledger-3-` when entries gained a title and a working directory: an older cache still decodes, and every unchanged file would then stay unnamed for ever, because a file that has not changed is never read again. Renaming forces the one rescan that fills them in.
 
 Loading and recomputing are separate tasks in the pane. Reading every store is seconds on a cold launch; adding the numbers up for a different span is microseconds — keyed together, changing the span put the spinner back on screen and made a cached read look like a rescan.
 
@@ -67,4 +82,4 @@ Loading and recomputing are separate tasks in the pane. Reading every store is s
 
 ## Tests
 
-`SpendSummaryTests` (spans as calendar windows, padded days, agent and model rollups, streaks, the peak hour, sessions filtered by when they ended, projects rolled up, table sorting), `AgentStoreTests` (each store built by hand in its measured shape — nobody's transcripts are committed), `SessionTitleTests` (titles trimmed to a line, envelopes refused, the two message-body shapes).
+`ModelPriceAliasTests` (every alias rule above, and that an unknown id stays unpriced rather than being matched to something near it), `SpendSummaryTests` (spans as calendar windows, padded days, agent and model rollups, streaks, the peak hour, sessions filtered by when they ended, projects rolled up, table sorting), `AgentStoreTests` (each store built by hand in its measured shape — nobody's transcripts are committed), `SessionTitleTests` (titles trimmed to a line, envelopes refused, the two message-body shapes).

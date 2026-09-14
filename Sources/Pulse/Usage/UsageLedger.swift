@@ -285,7 +285,7 @@ actor UsageLedgerReader {
                 dayModels[calendar.startOfDay(for: start), default: [:]][model, default: 0] += tally.total
                 dayTally[calendar.startOfDay(for: start), default: TokenTally()] = (dayTally[calendar.startOfDay(for: start)] ?? TokenTally()) + tally
 
-                if let price = prices[model] {
+                if let price = ModelPrices.price(for: model, in: prices) {
                     cost += tally.cost(at: price)
                     if let name = price.name { names[model] = name }
                 } else {
@@ -399,7 +399,7 @@ actor UsageLedgerReader {
 
                 for (model, tally) in models {
                     tokens += tally.total
-                    if let price = prices[model] { cost += tally.cost(at: price) }
+                    if let price = ModelPrices.price(for: model, in: prices) { cost += tally.cost(at: price) }
                 }
             }
 

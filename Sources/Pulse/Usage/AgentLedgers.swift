@@ -139,7 +139,7 @@ enum OpenCodeStore {
             )
             guard tally.total > 0 else { return }
 
-            let cost = prices[model].map { tally.cost(at: $0) } ?? 0
+            let cost = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
@@ -434,7 +434,7 @@ enum GrokStore {
 
                         buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
                         tokens += tally.total
-                        cost += prices[model].map { tally.cost(at: $0) } ?? 0
+                        cost += ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
                     }
                 }
 
@@ -522,7 +522,7 @@ enum KimiCLIStore {
                 let key = UsageLedgerReader.slotKey(for: at)
                 buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
                 tokens += tally.total
-                cost += prices[model].map { tally.cost(at: $0) } ?? 0
+                cost += ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
             }
 
             guard tokens > 0, let first, let last else { continue }
@@ -628,7 +628,7 @@ enum DevinCLIStore {
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
-            let cost = prices[model].map { tally.cost(at: $0) } ?? 0
+            let cost = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
             if var running = perSession[session] {
                 running.tokens += tally.total
                 running.cost += cost
