@@ -9,21 +9,39 @@ bullets, `**bold**`, `` `code` `` and `[links](https://example.com)`.
 
 ## 1.1.1
 
-- **Devin is the eighteenth provider.** Pulse reads its reported daily and weekly quota using your Chromium browser session, with no keychain prompt. Without a session or pasted credential, it reads the plan Devin's own app saved at launch; free plans show their message allowance instead. Older snapshots carry an "as of" date, expired windows disappear, and snapshots older than a day are refused. Browser and desktop readings stay separate so one account's or organization's quota cannot stand in for another's.
+**中文**
 
-- **Token spend brings your agents' work together.** A new Settings pane adds up the local history of Claude Code, Codex, OpenCode, Kilo CLI, Grok Build, Kimi CLI and Devin CLI. Choose today, the last 7, 30 or 90 days, or all time; inspect the split by agent, model, project, session and token kind. Money is the same work priced at published API rates, not your subscription bill, and models without a published price are counted but not costed.
+**新功能**
 
-- **Spending keeps the right dates and names.** A conversation resumed across midnight contributes only its in-range work to the selected span, so project and session figures agree with the total. Saved ledgers notice changes in nested logs and database journals, and model aliases resolve the names agents actually write. The latest custom Claude Code session title takes precedence over the opening prompt.
+- **Devin 成为第十八个服务商。** 从 Chromium 浏览器会话读取每日、每周额度，无需钥匙串授权；无登录凭据时读取应用保存的带日期套餐。不同账户和组织的读数保持隔离。
+- **Token 消耗统计。** 汇总 Claude Code、Codex、OpenCode、Kilo CLI、Grok Build、Kimi CLI 和 Devin CLI 的本机会话，按区间、Agent、模型、项目、会话和 token 类型查看。费用按公开 API 价格折算，不是订阅账单。
+- **开发者集成。** 在设置中导出 Raycast 扩展及 tmux、sketchybar、终端脚本；`Pulse --json` 增加读数来源和账户设置链接。集成仅读取缓存。[配置指南](https://github.com/qunqin24/Pulse/blob/main/Docs/integrations.md)。
+- **连接诊断。** 查看最近检查、读数来源、缓存和回退结果，按原因修复连接；额外账户可原位重新登录。可复制不含账户详情或凭据的诊断信息。
+- **变红阈值可调。** 可选 60%–90%，默认 75%；圆环、详情条和收起的胶囊保持一致，已耗尽状态仍优先。
 
-- **Developer integrations are ready to export.** Settings includes a Raycast extension and scripts for tmux, sketchybar and shell prompts. They read the cache through `Pulse --json`, retaining reading age and inferred-value marks. Account links open the right settings pane directly; JSON now includes each saved reading's actual source and its account link. See the [setup guide](https://github.com/qunqin24/Pulse/blob/main/Docs/integrations.md).
+**改进与修复**
 
-- **Connection diagnostics explain the reading on screen.** Each account shows its latest check, actual source, cache use and route outcomes, with a relevant next step when something needs attention. Added accounts can be signed in again in their existing slot, keeping their label and preferences. Copied diagnostics contain source, status and timestamps without account details or credentials.
+- Claude Code 的 warning 不再被误判为额度耗尽；登录码、取消按钮和错误信息归属正确的服务商页面，切换页面不再串写凭据。
+- 修复详情卡片展开、收起时沿胶囊漂移的问题。
+- 跨天会话只计入所选区间；修正日志与数据库缓存更新、模型别名计价和自定义会话标题读取。
+- Devin 旧快照按实际时间标注，过期窗口和超龄快照不再显示；额度变化纳入自适应刷新，异常浏览器存储长度不再导致崩溃。
 
-- **Choose where a ring turns red.** The new "Turn red at" setting offers thresholds from 60% to 90%, with 75% as the default. Rings, detail bars and the collapsed rail use the same threshold. A limit the provider declares spent still takes precedence, while Claude Code's warning severity no longer falsely marks a limit as exhausted.
+**English**
 
-- **A sign-in stays with its provider.** Its device code, Cancel button and error appear on that provider's panes, while other added-account sign-ins wait for it to finish. Completing a browser or GitHub login after switching panes no longer overwrites another provider's credential field.
+**New**
 
-- **Detail cards stay beside their rings as they open and close.** The reveal anchor accounts for the card's position along the rail, correcting the drift that affected cards farther down the panel. Devin's changing figures also participate in adaptive refresh, and malformed browser-storage lengths are rejected without crashing Pulse.
+- **Devin is the eighteenth provider.** Read daily and weekly quota from your Chromium browser session without a keychain prompt. With no credential, Pulse reads the app's dated saved plan. Account and organization boundaries are preserved.
+- **Token spend.** Bring together local sessions from Claude Code, Codex, OpenCode, Kilo CLI, Grok Build, Kimi CLI and Devin CLI, grouped by span, agent, model, project, session and token kind. Costs use published API rates and are not a subscription bill.
+- **Developer integrations.** Export a Raycast extension and tmux, sketchybar and shell scripts from Settings. `Pulse --json` now includes reading sources and account links; integrations only read the cache. [Setup guide](https://github.com/qunqin24/Pulse/blob/main/Docs/integrations.md).
+- **Connection diagnostics.** Inspect checks, sources, cache use and fallback outcomes, with relevant repair actions and in-place reauthentication for added accounts. Copied diagnostics omit account details and credentials.
+- **Configurable warning colour.** Choose where rings turn red, from 60% to 90% (default 75%). Rings, detail bars and the collapsed rail agree; exhausted limits still take precedence.
+
+**Changed and fixed**
+
+- Claude Code warnings no longer mean exhausted. Device codes, Cancel and errors stay with their provider; switching panes no longer lets login completion overwrite another provider's credential field.
+- Fixed detail cards drifting along the rail as they open and close.
+- Cross-midnight sessions count only their in-range work. Corrected log and database cache updates, model aliases and custom session titles.
+- Devin snapshots retain their actual age; expired windows and over-age snapshots disappear. Quota changes participate in adaptive refresh, and malformed browser-storage lengths no longer crash Pulse.
 
 ## 1.1.0
 
