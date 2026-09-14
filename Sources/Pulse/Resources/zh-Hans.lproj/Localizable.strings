@@ -64,6 +64,7 @@
 "Codex app server" = "Codex 应用服务器";
 "Local language server" = "本地语言服务器";
 "Signed-in web page" = "已登录的网页";
+"The app's saved plan" = "应用存下的套餐信息";
 
 "Floating panel" = "悬浮面板";
 "Show floating panel" = "显示悬浮面板";
@@ -253,6 +254,8 @@
 "Cursor's own login" = "Cursor 自己的登录";
 "Grok's own login" = "Grok 自己的登录信息";
 "Uses the login Grok's CLI already saved." = "用 Grok CLI 已保存的登录信息读取。";
+"Devin's own app" = "Devin 自己的应用";
+"Reads what Devin saved the last time it started." = "读取 Devin 上次启动时存下的套餐信息。";
 "Grok Bot is billed to your Cursor account." = "Grok Bot 的额度算在你的 Cursor 账户上。";
 "Uses the login Cursor already saved." = "用 Cursor 已保存的登录读取。";
 "Refresh" = "刷新";
@@ -286,6 +289,8 @@
 "Reads your quota from Ollama's own settings page." = "从 Ollama 自己的设置页面读取额度。";
 "Save" = "保存";
 "Monthly limit" = "每月限额";
+"Daily limit" = "每日限额";
+"Message allowance" = "消息额度";
 "estimated" = "推算";
 "Last read" = "上次读取";
 "Not yet" = "尚未读取";
@@ -296,6 +301,8 @@
 "Not now" = "以后再说";
 "Order" = "顺序";
 "Add an API key in Settings." = "在设置里填入 API key。";
+"Devin isn't installed." = "没有安装 Devin。";
+"Open Devin and sign in, so it can record your plan." = "打开 Devin 并登录，它才会记下你的套餐。";
 "Stored encrypted on this Mac." = "加密保存在本机。";
 "From z.ai. Stored encrypted on this Mac." = "在 z.ai 获取。加密保存在本机。";
 "%@ points" = "%@ 点";

@@ -64,6 +64,7 @@
 "Codex app server" = "Codex app server";
 "Local language server" = "Local language server";
 "Signed-in web page" = "Signed-in web page";
+"The app's saved plan" = "The app's saved plan";
 
 "Floating panel" = "Floating panel";
 "Show floating panel" = "Show floating panel";
@@ -253,6 +254,8 @@
 "Cursor's own login" = "Cursor's own login";
 "Grok's own login" = "Grok's own login";
 "Uses the login Grok's CLI already saved." = "Uses the login Grok's CLI already saved.";
+"Devin's own app" = "Devin's own app";
+"Reads what Devin saved the last time it started." = "Reads what Devin saved the last time it started.";
 "Grok Bot is billed to your Cursor account." = "Grok Bot is billed to your Cursor account.";
 "Uses the login Cursor already saved." = "Uses the login Cursor already saved.";
 "Refresh" = "Refresh";
@@ -286,6 +289,8 @@
 "Reads your quota from Ollama's own settings page." = "Reads your quota from Ollama's own settings page.";
 "Save" = "Save";
 "Monthly limit" = "Monthly limit";
+"Daily limit" = "Daily limit";
+"Message allowance" = "Message allowance";
 "estimated" = "estimated";
 "Last read" = "Last read";
 "Not yet" = "Not yet";
@@ -296,6 +301,8 @@
 "Not now" = "Not now";
 "Order" = "Order";
 "Add an API key in Settings." = "Add an API key in Settings.";
+"Devin isn't installed." = "Devin isn't installed.";
+"Open Devin and sign in, so it can record your plan." = "Open Devin and sign in, so it can record your plan.";
 "Stored encrypted on this Mac." = "Stored encrypted on this Mac.";
 "From z.ai. Stored encrypted on this Mac." = "From z.ai. Stored encrypted on this Mac.";
 "%@ points" = "%@ points";

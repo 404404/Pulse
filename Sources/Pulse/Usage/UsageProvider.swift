@@ -23,6 +23,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     case volcengine
     case commandCode
     case deepSeek
+    case devin
 
     var id: String { rawValue }
 
@@ -73,6 +74,11 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // The shop, not the model family: the balance belongs to the account
         // and is spent across whatever the key is pointed at.
         case .deepSeek: "DeepSeek"
+        // Cognition's agent. The Mac app is the renamed Windsurf editor and
+        // still identifies itself as `com.exafunction.windsurf`, but the plan,
+        // the quota and the account are Devin's, and Devin is what the reader
+        // subscribed to.
+        case .devin: "Devin"
         }
     }
 
@@ -108,6 +114,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // smudge, and this is the mark the product is recognised by anyway.
         case .commandCode: "commandcode"
         case .deepSeek: "deepseek"
+        case .devin: "devin"
         }
     }
 
@@ -130,7 +137,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // which is true today and better than a column of zeroes.
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .volcengine, .commandCode, .deepSeek: false
+             .volcengine, .commandCode, .deepSeek, .devin: false
         }
     }
 
@@ -177,7 +184,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .claudeCode, .codex, .volcengine: true
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .commandCode, .deepSeek: false
+             .commandCode, .deepSeek, .devin: false
         }
     }
 
@@ -209,6 +216,12 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .grokBot:
             (String.localized("Cursor's own login"),
              String.localized("Grok Bot is billed to your Cursor account."))
+        // The app's own cache, which is a route with a caveat worth stating
+        // where the reader will see it: it is written when Devin launches and
+        // not while it runs.
+        case .devin:
+            (String.localized("Devin's own app"),
+             String.localized("Reads what Devin saved the last time it started."))
         // Either a choice of routes, or a key the user pastes: both are asked
         // about elsewhere, so there is nothing here to state.
         case .claudeCode, .codex, .openCodeGo, .kimiCode, .ollamaCloud,
@@ -322,6 +335,10 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         return switch self {
         case .grok: FileManager.default.fileExists(atPath: home.appending(path: ".grok").path)
         case .grokBot: CursorAppLogin.hasStoredLogin()
+        // Nothing is pasted for Devin and nothing is signed in to: the app's
+        // own store is the only source, so an app that has never run here
+        // would put a permanently empty ring on the rail.
+        case .devin: DevinUsageService.isInstalled()
         default: true
         }
     }
@@ -397,6 +414,14 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // question is about whether there is an account behind it.
         if CommandCodeUsageService.storedKey() != nil {
             found.insert(.commandCode)
+        }
+
+        // Devin's own store, rather than the bundle: the plan is read from the
+        // app's global state, so a machine that has the app but has never run
+        // it has nothing to report — and one that ran it before the app was
+        // moved or renamed still does.
+        if DevinUsageService.isInstalled() {
+            found.insert(.devin)
         }
 
         return found

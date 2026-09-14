@@ -7,6 +7,10 @@ shows in the update window — see [Scripts/changelog.py](Scripts/changelog.py).
 Add the entry **before** tagging, in the small grammar the converter knows:
 bullets, `**bold**`, `` `code` `` and `[links](https://example.com)`.
 
+## Unreleased
+
+- **Devin is the eighteenth provider**, and the first one Pulse reads out of another app's own saved state rather than from a reply. There is nothing to enter: `Devin.app` is the renamed Windsurf editor, so it keeps its state in a VS Code-style SQLite file, and the plan it last read from your account is one row in it. Devin reports the daily and the weekly quota itself, with both resets — nothing here is inferred. **One caveat, and the card says it out loud**: that row is written when Devin *starts*, not while it runs, so a reading is stamped with the app's last launch and ages from there. Free plans show the message pool instead, which is what they report.
+
 ## 1.1.0
 
 - **A large balance no longer overflows the ring.** The rail shows ¥5k, ¥123k, $1.2M rather than the full figure, which did not fit and was being cut off — the exact balance is on the card and in Settings. It is always rounded **down**, so the ring never claims you have more than you do.

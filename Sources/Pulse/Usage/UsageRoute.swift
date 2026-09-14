@@ -9,6 +9,9 @@ enum UsageRoute: String, Codable, Sendable {
     case languageServer
     case webSession
     case arkCLI
+    /// A reading taken out of a desktop app's own saved state rather than
+    /// asked of anybody. Devin's: written when that app starts.
+    case appCache
 
     var title: String {
         switch self {
@@ -19,6 +22,7 @@ enum UsageRoute: String, Codable, Sendable {
         case .languageServer: .localized("Local language server")
         case .webSession: .localized("Signed-in web page")
         case .arkCLI: "arkcli"
+        case .appCache: .localized("The app's saved plan")
         }
     }
 
@@ -29,6 +33,7 @@ enum UsageRoute: String, Codable, Sendable {
         case .claudeCode, .codex, .volcengine: return nil
         case .antigravity: return .languageServer
         case .ollamaCloud: return .webSession
+        case .devin: return .appCache
         case .cursor, .openCodeGo, .kimiCode, .zai, .glmCoding, .minimax,
              .minimaxCN, .copilot, .grok, .grokBot, .commandCode, .deepSeek:
             return .endpoint

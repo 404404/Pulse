@@ -27,6 +27,10 @@ enum ConnectionRemedy: Equatable {
         case .claudeDesktopNotSignedIn, .claudeDesktopSessionExpired: return .openApp("Claude")
         case .cursorSignInRequired, .cursorLoginExpired: return .openApp("Cursor")
         case .antigravityNotRunning, .antigravityNotAnswering: return .openApp("Antigravity")
+        // The remedy for both is the same thing: start it. A plan it has never
+        // recorded is one sign-in away, and opening the app is the step before
+        // that either way.
+        case .devinAppMissing, .devinPlanUnread: return .openApp("Devin")
         case .notSignedIn, .signedOut: return .signIn
         case .apiKeyMissing, .apiKeyRefused: return .editCredential
         case .ollamaSessionMissing, .ollamaSessionExpired: return .readBrowser
@@ -68,6 +72,7 @@ enum ConnectionRemedy: Equatable {
         case .volcengine: "volcengine"
         case .commandCode: "command-code"
         case .deepSeek: "deepseek"
+        case .devin: "devin"
         }
         return URL(string: "https://github.com/qunqin24/Pulse/blob/main/Docs/providers/\(page).md")!
     }

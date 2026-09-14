@@ -21,6 +21,15 @@ struct UsageWindow: Identifiable, Equatable, Codable, Sendable {
         /// to turn over, and calling it a spend limit put the word "limit"
         /// on a row where none exists.
         case balance
+        /// Devin's, which resets on a fixed daily boundary. The shortest
+        /// window anyone else reports is five hours and the next is a week,
+        /// so this had nowhere to map either.
+        case daily
+        /// An allowance counted in messages rather than in time. Devin's free
+        /// plan reports one — so many messages, so many left — with no window,
+        /// no reset and no length, which is why it is its own kind rather than
+        /// a period nobody stated.
+        case messages
         /// OpenCode Go's billing period. The others' longest window is a
         /// week, so this one had nowhere to map.
         case monthly
@@ -203,6 +212,8 @@ struct UsageWindow: Identifiable, Equatable, Codable, Sendable {
         case .weekly: .localized("Weekly limit")
         case .spend: .localized("Spend limit")
         case .balance: .localized("Balance")
+        case .daily: .localized("Daily limit")
+        case .messages: .localized("Message allowance")
         case .monthly: .localized("Monthly limit")
         case .other(let seconds):
             seconds >= 86_400
@@ -379,6 +390,14 @@ struct ProviderUsage: Identifiable, Equatable, Sendable {
         /// used to be reported as "the service returned an error", which sends
         /// somebody to look for an outage instead of at their subscription.
         case zaiNoCodingPlan
+        /// Devin's figures come out of the cache its own app keeps, so an
+        /// app that has never run here has nothing to read. Its own case
+        /// because the remedy is to install or open something, not to sign in
+        /// to anything.
+        case devinAppMissing
+        /// The app has run here and its store holds no plan — never signed in,
+        /// or a build that stopped writing the row.
+        case devinPlanUnread
         /// No key has been entered for a provider that needs one.
         case apiKeyMissing
         /// There is a key, and the service refused it.
@@ -417,6 +436,8 @@ struct ProviderUsage: Identifiable, Equatable, Sendable {
             case .volcengineCLIMissing: .localized("Install arkcli and run `arkcli auth login`, or add access keys in Settings.")
             case .volcengineSignInRequired: .localized("arkcli isn't signed in. Run `arkcli auth login`.")
             case .zaiNoCodingPlan: .localized("That key works. The account has no Coding Plan running on it.")
+            case .devinAppMissing: .localized("Devin isn't installed.")
+            case .devinPlanUnread: .localized("Open Devin and sign in, so it can record your plan.")
             case .apiKeyMissing: .localized("Add an API key in Settings.")
             case .apiKeyRefused: .localized("That key was refused. Check it in Settings.")
             case .unreachable: .localized("The service didn't respond.")

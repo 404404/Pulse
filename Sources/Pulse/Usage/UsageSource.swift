@@ -106,6 +106,9 @@ enum UsageSource: String, CaseIterable, Identifiable, Sendable {
              (_, .minimax), (_, .minimaxCN), (_, .copilot), (_, .commandCode), (_, .deepSeek):
             // Never shown either — one route, and it needs a key.
             .localized("Uses the key you entered.")
+        case (_, .devin):
+            // Never shown: one route, and it reads the app's own saved state.
+            .localized("Reads what Devin saved the last time it started.")
         case (_, .grokBot):
             // Never shown: one route, and it borrows the login Cursor stored,
             // since Grok Bot is billed against that account.

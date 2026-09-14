@@ -59,6 +59,7 @@ Disabled providers are not fetched. A provider pane can still refresh that accou
 - A window whose **reset time has passed is dropped**, not aged. If every window has reset, report the error.
 - 24h cap for windows that never say when they reset.
 - Missing credentials are **not** papered over (`.apiKeyMissing`, `.ollamaSessionMissing`, `.signedOut`, `.claudeDesktopNotSignedIn`, `.claudeDesktopKeyRefused`).
+- **A `.live` reading can still be old.** `observedAt` is when the *provider's* figures were taken, not when Pulse asked: Devin's come out of a row its own app writes at launch, so a fresh fetch every few minutes keeps returning the same morning-old stamp, and the card's "as of" line is the only thing saying so ([providers/devin.md](providers/devin.md)). The 24h cap above is what eventually drops it.
 - `.live` is not the same as “newest.” A route can mark a capture live for a few minutes while an earlier endpoint reading has a later `observedAt`. `reconciled` prefers the later stamp.
 - `UsageStore.start` paints the cache before the first request so the rail is not blank on a cold start. Cache never undoes a fetch that has already landed.
 

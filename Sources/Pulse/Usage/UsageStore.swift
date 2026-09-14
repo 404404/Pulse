@@ -374,6 +374,7 @@ final class UsageStore {
         let volcengine = VolcengineUsageService(enteredKey: apiKeys[.volcengine])
         let volcengineSource = settings.source(for: AccountKey(.volcengine))
         let commandCode = CommandCodeUsageService(enteredKey: apiKeys[.commandCode])
+        let devin = DevinUsageService()
         let deepSeek = DeepSeekUsageService(
             enteredKey: apiKeys[.deepSeek],
             basis: settings.deepSeekBasis,
@@ -456,6 +457,9 @@ final class UsageStore {
             async let deepSeekUsage = wanted.contains(.deepSeek)
                 ? await deepSeek.fetch()
                 : ProviderUsage.unavailable(.deepSeek, reason: .loading)
+            async let devinUsage = wanted.contains(.devin)
+                ? await devin.fetch()
+                : ProviderUsage.unavailable(.devin, reason: .loading)
 
             let (rawCodex, rawClaude, rawAntigravity, rawOpenCode) =
                 await (codexUsage, claudeUsage, antigravityUsage, openCodeUsage)
@@ -464,7 +468,7 @@ final class UsageStore {
             let (rawMiniMax, rawMiniMaxCN) = await (minimaxUsage, minimaxCNUsage)
             let (rawCopilot, rawGrok, rawGrokBot) = await (copilotUsage, grokUsage, grokBotUsage)
             let (rawVolcengine, rawCommandCode) = await (volcengineUsage, commandCodeUsage)
-            let rawDeepSeek = await deepSeekUsage
+            let (rawDeepSeek, rawDevin) = await (deepSeekUsage, devinUsage)
 
             // **The disowning is checked before anything is written, not just
             // before the readings are handed to the panel.** `reconciled`
@@ -496,6 +500,7 @@ final class UsageStore {
             let fetchedVolcengine = await UsageCache.shared.reconciled(rawVolcengine)
             let fetchedCommandCode = await UsageCache.shared.reconciled(rawCommandCode)
             let fetchedDeepSeek = await UsageCache.shared.reconciled(rawDeepSeek)
+            let fetchedDevin = await UsageCache.shared.reconciled(rawDevin)
 
             // Accounts Pulse signed in to itself, read one at a time: each
             // may have to renew its token first, and they are few.
@@ -543,6 +548,7 @@ final class UsageStore {
                 (.volcengine, fetchedVolcengine, rawVolcengine),
                 (.commandCode, fetchedCommandCode, rawCommandCode),
                 (.deepSeek, fetchedDeepSeek, rawDeepSeek),
+                (.devin, fetchedDevin, rawDevin),
             ] where wanted.contains(provider) {
                 self.commit(fetched, raw: raw, for: AccountKey(provider).id)
             }
@@ -626,6 +632,7 @@ final class UsageStore {
         let minimax = MiniMaxUsageService(provider: provider, enteredKey: key)
         let volcengine = VolcengineUsageService(enteredKey: key)
         let commandCode = CommandCodeUsageService(enteredKey: key)
+        let devinAccount = DevinUsageService()
         let deepSeek = DeepSeekUsageService(
             enteredKey: key,
             basis: settings.deepSeekBasis,
@@ -669,6 +676,8 @@ final class UsageStore {
                 raw = await commandCode.fetch()
             case .deepSeek:
                 raw = await deepSeek.fetch()
+            case .devin:
+                raw = await devinAccount.fetch()
             }
             }
 
@@ -741,7 +750,7 @@ final class UsageStore {
         // Nothing else can be signed in to, so nothing else gets here.
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
-             .commandCode, .deepSeek:
+             .commandCode, .deepSeek, .devin:
             .unavailable(account, reason: .loading)
         }
     }
