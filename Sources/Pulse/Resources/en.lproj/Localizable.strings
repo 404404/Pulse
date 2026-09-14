@@ -256,6 +256,8 @@
 "Uses the login Grok's CLI already saved." = "Uses the login Grok's CLI already saved.";
 "Devin's own app" = "Devin's own app";
 "Reads what Devin saved the last time it started." = "Reads what Devin saved the last time it started.";
+"Asks Devin for your quota, with the token you entered." = "Asks Devin for your quota, with the token you entered.";
+"A Bearer token from app.devin.ai, then a space, then your organization. Optional — Pulse can read what Devin's app saved. Stored encrypted on this Mac." = "A Bearer token from app.devin.ai, then a space, then your organization. Optional — Pulse can read what Devin's app saved. Stored encrypted on this Mac.";
 "Grok Bot is billed to your Cursor account." = "Grok Bot is billed to your Cursor account.";
 "Uses the login Cursor already saved." = "Uses the login Cursor already saved.";
 "Refresh" = "Refresh";
@@ -280,6 +282,9 @@
 "Finds it in the browser you signed in with." = "Finds it in the browser you signed in with.";
 "Read" = "Read";
 "No browser cookie store was found." = "No browser cookie store was found.";
+"No Chromium browser was found." = "No Chromium browser was found.";
+"No Devin session found. Sign in at app.devin.ai first." = "No Devin session found. Sign in at app.devin.ai first.";
+"Token and organization" = "Token and organization";
 "Read from %@." = "Read from %@.";
 "No Ollama session found. Sign in at ollama.com first." = "No Ollama session found. Sign in at ollama.com first.";
 "Copied from your browser. Stored encrypted on this Mac." = "Copied from your browser. Stored encrypted on this Mac.";
@@ -303,6 +308,7 @@
 "Add an API key in Settings." = "Add an API key in Settings.";
 "Devin isn't installed." = "Devin isn't installed.";
 "Open Devin and sign in, so it can record your plan." = "Open Devin and sign in, so it can record your plan.";
+"Add your Devin organization after the token, separated by a space." = "Add your Devin organization after the token, separated by a space.";
 "Stored encrypted on this Mac." = "Stored encrypted on this Mac.";
 "From z.ai. Stored encrypted on this Mac." = "From z.ai. Stored encrypted on this Mac.";
 "%@ points" = "%@ points";

@@ -111,6 +111,105 @@ struct DevinParsingTests {
         #expect(DevinUsageService.launchStamp("window1") == nil)
     }
 
+    // MARK: - The pasted credential
+
+    @Test("A whole header line, a bare token, and an organization URL all parse")
+    func credentialAcceptsWhatPeopleActuallyCopy() throws {
+        let header = try #require(DevinUsageService.Credential(pasted: "Authorization: Bearer eyJabc my-team"))
+        #expect(header.token == "eyJabc")
+        #expect(header.organization == "org/my-team")
+
+        let bare = try #require(DevinUsageService.Credential(pasted: "  eyJabc\torg_1a2b3c "))
+        #expect(bare.token == "eyJabc")
+        // An internal id belongs in a different segment from a slug, and it is
+        // also what travels as the header that picks between organizations.
+        #expect(bare.organization == "organizations/org_1a2b3c")
+        #expect(bare.internalID == "org_1a2b3c")
+
+        let url = try #require(DevinUsageService.Credential(
+            pasted: "eyJabc https://app.devin.ai/org/my-team/settings/billing"
+        ))
+        #expect(url.organization == "org/my-team")
+        #expect(url.internalID == nil)
+    }
+
+    @Test("A token with no organization is not a usable credential half")
+    func organizationIsSeparateFromTheToken() throws {
+        let token = try #require(DevinUsageService.Credential(pasted: "eyJabc"))
+        #expect(token.organization == nil)
+        // Nothing to ask, so the service says which half is missing rather
+        // than firing a request at a path it cannot build.
+        #expect(token.paths.isEmpty)
+
+        #expect(DevinUsageService.Credential(pasted: "   ") == nil)
+        #expect(DevinUsageService.Credential(pasted: nil) == nil)
+    }
+
+    @Test("The path is tried in more than one spelling, each one once")
+    func candidatePathsAreOrderedAndUnique() throws {
+        let slug = try #require(DevinUsageService.Credential(pasted: "eyJabc my-team"))
+        #expect(slug.paths == ["org/my-team/billing/quota/usage", "my-team/billing/quota/usage"])
+
+        let id = try #require(DevinUsageService.Credential(pasted: "eyJabc org_1a2b3c"))
+        #expect(id.paths == [
+            "org_1a2b3c/billing/quota/usage",
+            "organizations/org_1a2b3c/billing/quota/usage",
+        ])
+    }
+
+    // MARK: - The live reply
+
+    private static func reply(_ name: String) throws -> DevinUsageService.Reply {
+        let url = try #require(Bundle.module.url(
+            forResource: name, withExtension: "json", subdirectory: "Fixtures"
+        ))
+        return try #require(DevinUsageService.Reply(json: try Data(contentsOf: url)))
+    }
+
+    @Test("The endpoint reports what is spent, where the cached row reports what is left")
+    func endpointPercentagesAreNotInverted() throws {
+        let windows = DevinUsageService.windows(from: try Self.reply("devin-quota-usage"))
+        #expect(windows.map(\.id) == ["devin-daily", "devin-weekly"])
+        // 2% used, not 98%. Inverting these once more would be inverting twice.
+        #expect(abs(windows[0].usedFraction - 0.02) < 0.0001)
+        #expect(abs(windows[1].usedFraction - 0.01) < 0.0001)
+
+        // Written with an offset rather than a `Z`, as the service sends it.
+        #expect(windows[0].resetsAt == Date(timeIntervalSince1970: 1_789_372_800))
+        #expect(windows[1].resetsAt == Date(timeIntervalSince1970: 1_789_891_200))
+
+        // The reply names no plan; the card's plan line comes from the row the
+        // app saved.
+        #expect(try Self.reply("devin-quota-usage").planName == nil)
+    }
+
+    @Test("An account with no allowance draws no rings")
+    func noQuotaAllocationDrawsNothing() throws {
+        let reply = try Self.reply("devin-quota-no-allocation")
+        #expect(!reply.hasQuotaAllocation)
+        // Zero percent of nothing is not "nothing used" — it is a plan with no
+        // quota on it, and two empty rings would read as a full allowance.
+        #expect(DevinUsageService.windows(from: reply).isEmpty)
+    }
+
+    @Test("Epoch milliseconds, cents, and a hidden daily window")
+    func endpointHandlesTheOtherShapes() throws {
+        let reply = try Self.reply("devin-quota-hidden")
+        #expect(reply.overageBalance == 2.5)
+        #expect(reply.weeklyResetAt == Date(timeIntervalSince1970: 1_789_891_200))
+
+        let windows = DevinUsageService.windows(from: reply)
+        #expect(windows.map(\.id) == ["devin-weekly"])
+    }
+
+    @Test("A reply with neither window nor money is not this reply")
+    func anUnrelatedReplyIsRefused() throws {
+        // Parsed as JSON and still not an answer: reported as unreadable
+        // rather than drawn as an account with nothing in it.
+        #expect(DevinUsageService.Reply(json: Data(#"{"detail":"Not Found"}"#.utf8)) == nil)
+        #expect(DevinUsageService.Reply(json: Data("<html>".utf8)) == nil)
+    }
+
     @Test("A store with no plan row reads as nothing rather than as zero")
     func aStoreWithoutAPlanIsUnread() throws {
         let empty = URL.temporaryDirectory.appending(path: "devin-empty-\(UUID().uuidString).vscdb")

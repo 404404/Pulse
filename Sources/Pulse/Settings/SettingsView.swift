@@ -782,7 +782,17 @@ struct SettingsView: View {
     /// the way is discarded unseen.
     /// Names the browser about to be opened, and warns when opening it will
     /// ask for the keychain.
-    private static func browserHint(_ chosen: BrowserCookies.Browser?) -> String {
+    private static func browserHint(_ chosen: BrowserCookies.Browser?, for provider: Provider) -> String {
+        // A `localStorage` entry is not encrypted, so nothing is ever asked
+        // for and the hint must not say it might be.
+        guard provider.usesSessionCookie else {
+            if let chosen { return String.localized("Only \(chosen.name).") }
+            guard let first = ChromiumLocalStorage.present().first else {
+                return String.localized("Finds it in the browser you signed in with.")
+            }
+            return String.localized("Starts with \(first.name).")
+        }
+
         // Named, it is the only one opened — the rest are not tried, so a
         // failure is reported rather than answered from a browser the user
         // never signed in to. That is the same bargain `UsageSource` makes.
@@ -805,6 +815,14 @@ struct SettingsView: View {
     }
 
     private func readSession(for account: AccountKey) {
+        // Devin's credential is not a cookie and is not saved: the service
+        // reads it from the browser on every pass, so this button's job is to
+        // say whether there is one to read and where it was found.
+        guard account.provider.usesSessionCookie else {
+            readBrowserStorage(for: account)
+            return
+        }
+
         // Named, that one and no other. Left automatic, the default browser
         // leads and the rest follow.
         let browsers = settings.sessionBrowser(for: account).map { [$0] } ?? BrowserCookies.present()
@@ -840,6 +858,36 @@ struct SettingsView: View {
             if pane == .account(account) {
                 sessionMessage = String.localized("No Ollama session found. Sign in at ollama.com first.")
             }
+        }
+    }
+
+    /// Devin: look now, say what was found, and ask for a refresh.
+    ///
+    /// **Nothing is stored.** A saved copy would be a second place for the
+    /// session to go stale and the one that cannot renew itself; reading it
+    /// each pass costs about forty milliseconds and is always current.
+    private func readBrowserStorage(for account: AccountKey) {
+        let chosen = settings.sessionBrowser(for: account)
+        guard !(chosen.map { [$0] } ?? ChromiumLocalStorage.present()).isEmpty else {
+            sessionMessage = String.localized("No Chromium browser was found.")
+            return
+        }
+
+        Task {
+            // Off the main thread: it opens every table in a browser profile's
+            // storage, and the settings window should not freeze while it does.
+            let found = await Task.detached(priority: .userInitiated) {
+                DevinUsageService.fromBrowser(chosen)
+            }.value
+
+            guard pane == .account(account) else { return }
+            guard let found else {
+                sessionMessage = String.localized("No Devin session found. Sign in at app.devin.ai first.")
+                return
+            }
+
+            sessionMessage = String.localized("Read from \(found.browser.name).")
+            store.refresh(account)
         }
     }
 
@@ -1403,6 +1451,11 @@ struct SettingsView: View {
             .localized("From commandcode.ai. Optional — Pulse can use the login Command Code saved. Stored encrypted on this Mac.")
         case .deepSeek:
             .localized("From platform.deepseek.com. Stored encrypted on this Mac.")
+        // Two values in one field, because the quota path is scoped by an
+        // organisation and nothing on this Mac carries one. Optional, like
+        // Volcengine's: without it Pulse reads the plan Devin's own app saved.
+        case .devin:
+            .localized("A Bearer token from app.devin.ai, then a space, then your organization. Optional — Pulse can read what Devin's app saved. Stored encrypted on this Mac.")
         default:
             .localized("Stored encrypted on this Mac.")
         }
@@ -1523,7 +1576,12 @@ struct SettingsView: View {
                         ? String.localized("Session cookie")
                         : account.provider.usesKeyPair
                             ? String.localized("Access keys")
-                            : String.localized("API key"),
+                            // Devin's is a token *and* an organization, and
+                            // calling it an API key sends people looking for a
+                            // page that issues one. There isn't one.
+                            : account.provider == .devin
+                                ? String.localized("Token and organization")
+                                : String.localized("API key"),
                     subtitle: Self.keySubtitle(for: account.provider)
                 ) {
                     HStack(spacing: 8) {
@@ -1541,7 +1599,7 @@ struct SettingsView: View {
                 // Only where a browser session *is* the credential. Every
                 // other provider borrows a login its own tool stored, and none
                 // of them should be going through anybody's cookies to do it.
-                if account.provider.usesSessionCookie {
+                if account.provider.readsBrowserStorage {
                     SettingsRowDivider()
 
                     SettingsRow(
@@ -1550,7 +1608,8 @@ struct SettingsView: View {
                         // Chromium keeps its cookies under a key in the login
                         // keychain, and being told a second before the dialog
                         // appears is the difference between a step and a scare.
-                        subtitle: sessionMessage ?? Self.browserHint(settings.sessionBrowser(for: account))
+                        subtitle: sessionMessage
+                            ?? Self.browserHint(settings.sessionBrowser(for: account), for: account.provider)
                     ) {
                         HStack(spacing: 8) {
                             Picker("", selection: Binding(
@@ -1565,7 +1624,12 @@ struct SettingsView: View {
                                 // Only what is actually installed. A browser
                                 // that isn't there is a choice that can only
                                 // fail.
-                                ForEach(BrowserCookies.present()) { browser in
+                                // Devin's is in a LevelDB, which only the
+                                // Chromium browsers keep — offering Safari or
+                                // Firefox there is a choice that cannot work.
+                                ForEach(account.provider.usesSessionCookie
+                                    ? BrowserCookies.present()
+                                    : ChromiumLocalStorage.present()) { browser in
                                     Text(browser.name).tag(BrowserCookies.Browser?.some(browser))
                                 }
                             }

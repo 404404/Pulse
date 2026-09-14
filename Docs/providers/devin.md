@@ -1,8 +1,10 @@
 # Devin
 
-| `Provider` | Ring name | Source | Icon |
+| `Provider` | Ring name | Routes | Icon |
 |---|---|---|---|
-| `.devin` | Devin | `~/Library/Application Support/Devin/User/globalStorage/state.vscdb` | `devin` |
+| `.devin` | Devin | the app's saved plan · `https://app.devin.ai` | `devin` |
+
+**Two routes.** The endpoint is live and needs a session, which Pulse reads out of a Chromium browser without asking for anything; the saved plan needs nothing at all but is only as fresh as the app's last launch. `.automatic` asks the endpoint and falls back to the saved plan.
 
 Service: [`../../Sources/Pulse/Providers/DevinUsageService.swift`](../../Sources/Pulse/Providers/DevinUsageService.swift).
 
@@ -10,9 +12,9 @@ Devin is Cognition's agent. Its Mac app is the **former Windsurf editor** — `/
 
 ## Verified against a live account
 
-Yes, on 2026-09-14, against a Pro subscription on this machine. Devin.app 3.10.23 (Electron 42, `windsurf@3.10.23`). The row was read, the figures were watched moving, and both of the shapes below came off this Mac rather than out of somebody else's parser.
+**Both routes, on 2026-09-14**, against a Pro subscription on this machine. Devin.app 3.10.23 (Electron 42, `windsurf@3.10.23`). The row was read and the figures were watched moving; the endpoint answered `200` with the body quoted below, out of a session read from Edge's `localStorage`. Every shape on this page came off this Mac rather than out of somebody else's parser — and the two routes agreed: the saved row said 98% and 99% *remaining* while the endpoint said 2% and 1% *used*.
 
-## The route
+## The saved plan
 
 No credential, no network, no keychain prompt, no Full Disk Access. The file is the user's own, under their own Application Support, and is opened **read-only and in place** — the app may be running and its rollback journal belongs to that process.
 
@@ -71,7 +73,72 @@ So the reading is stamped with **the launch**, not with now. The time comes from
 
 That is what puts "as of …" on the card instead of letting a morning-old figure pass for a fresh one, and `UsageCache`'s 24-hour ceiling drops it entirely once a day has gone by without a relaunch.
 
-A live route exists and is not built yet: `GET https://app.devin.ai/api/<org>/billing/quota/usage` with a Bearer token, and Windsurf's `GetPlanStatus` protobuf on `windsurf.com`. Both need session values that live in a **Chromium browser's localStorage** — a LevelDB, which Pulse has no reader for — rather than in the app: the four `devin_*` keys CodexBar reads were looked for in `Application Support/Devin/Local Storage/leveldb` on this Mac and are **not there**. The app authenticates through the Codeium extension's own stored session against `server.codeium.com`, a different credential for a different API.
+## The endpoint
+
+```
+GET https://app.devin.ai/api/<org>/billing/quota/usage
+Authorization: Bearer <token>
+x-cog-org-id: <internal id>        # only where the organization was given as one
+```
+
+The whole reply, measured — 232 bytes:
+
+```json
+{ "daily_percentage": 2, "weekly_percentage": 1,
+  "daily_reset_at": "2026-09-14T00:00:00-08:00",
+  "weekly_reset_at": "2026-09-20T00:00:00-08:00",
+  "hide_daily_quota": false, "has_quota_allocation": true,
+  "is_quota_plan": true, "overage_balance": 10 }
+```
+
+It **names no plan**, so the card's plan line is taken from the row the app saved — the one place on this Mac that has one. `has_quota_allocation: false` draws no rings at all: zero percent of nothing is a plan with no quota on it, and two empty rings read as a full allowance.
+
+### The credential is read from the browser
+
+Not from the app: the four `devin_*` keys CodexBar looks for are **not there** in `Application Support/Devin/Local Storage/leveldb` — checked on this Mac. The app authenticates through the Codeium extension's stored session against `server.codeium.com`, a different credential for a different API.
+
+They are in a **Chromium browser's `localStorage`**, which [`ChromiumLocalStorage`](../../Sources/Pulse/Auth/ChromiumLocalStorage.swift) reads. Two keys under `https://app.devin.ai` carry everything the endpoint needs:
+
+```text
+auth1_session                                 {"token":"auth1_…","userId":"user-…"}
+last-internal-org-for-external-org-v1-<slug>  org-<32 hex>
+```
+
+The organization id is **hyphenated** (`org-`), not underscored — which is why both spellings are accepted. The key's suffix is the *external* slug and is often the literal string `null`, so the value is what is read rather than the name. `windsurf.com` is the fallback origin: the same account signed in through the older storefront leaves `devin_auth1_token` and `devin_primary_org_id` there, the same two values under different names.
+
+**Read on every pass, never stored.** A saved copy would be a second place for the session to go stale and the one that cannot renew itself; the browser's copy is by definition the current one, and reading it costs about forty milliseconds. Nothing is written to `keys.dat` for this provider unless the reader pastes something.
+
+**Which browser** is the reader's choice, in Settings, defaulting to the one this Mac opens links with and then the rest. Only Chromium browsers are offered: Firefox and Safari keep no `localStorage` LevelDB, so listing them would be a choice that cannot work. **No keychain prompt** — unlike cookies, `localStorage` is not encrypted.
+
+### Pasting instead
+
+For anyone whose browser is not a Chromium, the same two values go in one field, whitespace-separated — a token may contain a colon and an organization URL certainly does:
+
+```text
+eyJ… my-team
+Authorization: Bearer eyJ… org_1a2b3c
+eyJ… https://app.devin.ai/org/my-team/settings
+```
+
+A whole `Authorization:` line is accepted because that is what a browser's network tab puts on the clipboard. The organization is normalised to the segment the API wants: `org_…` / `org-…` is an internal id and becomes `organizations/<id>`, anything else is a slug and becomes `org/<slug>`; an `app.devin.ai` URL is reduced to whichever of the two it carries. A pasted value **wins over the browser**. The path is then tried in each spelling until one answers, because the shape of that segment is the part CodexBar found varies. **A refused token is not retried** — it would be refused at every spelling.
+
+### The reply reports what is *spent*
+
+This is the trap in carrying both routes. The saved plan reports `dailyRemainingPercent`; the endpoint reports `daily_percentage`, which is **used**. Inverting the second would be inverting twice. Windsurf's own `GetPlanStatus` protobuf is the other way round again (`daily_quota_remaining_percent`); that one is not implemented here.
+
+| Field | Becomes |
+|---|---|
+| `daily_percentage`, `daily_reset_at`, `hide_daily_quota` | `.daily`, 86,400s |
+| `weekly_percentage`, `weekly_reset_at`, `hide_weekly_quota` | `.weekly`, 604,800s |
+| `overage_balance`, else `overage_balance_cents` ÷ 100 | `creditBalance` |
+| `has_quota_allocation` | `false` draws nothing at all |
+| `plan_name` / `planName` / `plan` / `tier`, else the saved row | the plan line |
+
+Resets arrived with an offset (`-08:00`) rather than as `Z`. Epoch seconds and milliseconds are read as well, since CodexBar's notes carry both and neither costs anything.
+
+**CodexBar's fraction heuristic was deliberately not copied.** It reads a percentage of 1 or less as a fraction and multiplies by a hundred; a genuine 0.4% used would then be drawn as 40%, which is a figure nobody reported — and this account's measured reply carried whole numbers. Its recursive key-hunting fallback — any key whose name contains "day" or "week" — is not copied either, and for the same reason.
+
+A reply that parses as JSON and carries neither window nor balance is `.unreadableReply`, not an account with nothing in it.
 
 ## Two accounts in one store
 
@@ -81,7 +148,9 @@ More than one `cachedPlanInfoData:user-…` row can exist where two accounts hav
 
 - `.devinAppMissing` — no support directory under either name. "Devin isn't installed."
 - `.devinPlanUnread` — the store is there and holds no plan row. "Open Devin and sign in, so it can record your plan."
-Both are `.neutral` to `UsageAlerts`: true until somebody does something, and not an outage to announce. The remedy for both is `openApp("Devin")`.
+- `.devinOrganizationMissing` — a token was pasted with no organization beside it. Its own case rather than `.apiKeyMissing`, which would say "add a key" about a field that already has one.
+
+All three are `.neutral` to `UsageAlerts`: true until somebody does something, and not an outage to announce. The first two offer `openApp("Devin")`; the third offers the credential field.
 
 ## First-run evidence
 
@@ -89,4 +158,8 @@ The app's own store, not the bundle: the plan is read from global state, so a Ma
 
 ## Fixtures
 
-`Tests/PulseTests/Fixtures/devin-pro.json`, `devin-free.json`, `devin-hidden-daily.json`, and `devin-state.vscdb` — a two-row store used to pin the choice above. Written to the confirmed shapes with the account identity removed.
+The saved plan: `devin-pro.json`, `devin-free.json`, `devin-hidden-daily.json`, and `devin-state.vscdb` — a two-row store pinning the choice above. Written to the confirmed shapes with the account identity removed.
+
+The endpoint: `devin-quota-usage.json` is the measured reply, field for field. `devin-quota-hidden.json` and `devin-quota-no-allocation.json` are written to CodexBar's account of the shapes this account does not produce — a hidden daily window, a balance in cents, a reset in epoch milliseconds, and a plan with no allowance.
+
+The reader: `ChromiumLocalStorageTests` builds a LevelDB log by hand rather than committing anybody's profile.

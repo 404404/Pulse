@@ -32,7 +32,7 @@ enum ConnectionRemedy: Equatable {
         // that either way.
         case .devinAppMissing, .devinPlanUnread: return .openApp("Devin")
         case .notSignedIn, .signedOut: return .signIn
-        case .apiKeyMissing, .apiKeyRefused: return .editCredential
+        case .apiKeyMissing, .apiKeyRefused, .devinOrganizationMissing: return .editCredential
         case .ollamaSessionMissing, .ollamaSessionExpired: return .readBrowser
         case .claudeDesktopKeyRefused, .unreachable, .rateLimited, .serverError,
              .codexServerFailed: return .retry

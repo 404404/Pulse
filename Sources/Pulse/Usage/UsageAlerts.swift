@@ -435,7 +435,7 @@ struct AlertMemory: Codable, Sendable, Equatable {
              // An app that was never installed or never signed in, which is
              // the same standing as a CLI that is not there: true until
              // somebody does something, and not an outage to announce.
-             .devinAppMissing, .devinPlanUnread:
+             .devinAppMissing, .devinPlanUnread, .devinOrganizationMissing:
             .neutral
         }
     }

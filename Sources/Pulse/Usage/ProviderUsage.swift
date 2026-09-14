@@ -398,6 +398,12 @@ struct ProviderUsage: Identifiable, Equatable, Sendable {
         /// The app has run here and its store holds no plan — never signed in,
         /// or a build that stopped writing the row.
         case devinPlanUnread
+        /// A token was pasted with no organisation beside it. The quota path
+        /// is scoped by one and nothing on this Mac carries it, so this is a
+        /// separate answer from a missing token: half of what is needed is
+        /// there, and saying "add a key" about a field that has one is the
+        /// kind of message that sends people to re-paste what already works.
+        case devinOrganizationMissing
         /// No key has been entered for a provider that needs one.
         case apiKeyMissing
         /// There is a key, and the service refused it.
@@ -438,6 +444,7 @@ struct ProviderUsage: Identifiable, Equatable, Sendable {
             case .zaiNoCodingPlan: .localized("That key works. The account has no Coding Plan running on it.")
             case .devinAppMissing: .localized("Devin isn't installed.")
             case .devinPlanUnread: .localized("Open Devin and sign in, so it can record your plan.")
+            case .devinOrganizationMissing: .localized("Add your Devin organization after the token, separated by a space.")
             case .apiKeyMissing: .localized("Add an API key in Settings.")
             case .apiKeyRefused: .localized("That key was refused. Check it in Settings.")
             case .unreachable: .localized("The service didn't respond.")

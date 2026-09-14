@@ -256,6 +256,8 @@
 "Uses the login Grok's CLI already saved." = "用 Grok CLI 已保存的登录信息读取。";
 "Devin's own app" = "Devin 自己的应用";
 "Reads what Devin saved the last time it started." = "读取 Devin 上次启动时存下的套餐信息。";
+"Asks Devin for your quota, with the token you entered." = "用你填入的 token 向 Devin 查询额度。";
+"A Bearer token from app.devin.ai, then a space, then your organization. Optional — Pulse can read what Devin's app saved. Stored encrypted on this Mac." = "从 app.devin.ai 取的 Bearer token，空一格，再填组织。可不填——不填时 Pulse 读取 Devin 应用自己存下的套餐。加密保存在本机。";
 "Grok Bot is billed to your Cursor account." = "Grok Bot 的额度算在你的 Cursor 账户上。";
 "Uses the login Cursor already saved." = "用 Cursor 已保存的登录读取。";
 "Refresh" = "刷新";
@@ -280,6 +282,9 @@
 "Finds it in the browser you signed in with." = "在你登录用的那个浏览器里找。";
 "Read" = "读取";
 "No browser cookie store was found." = "没有找到任何浏览器的 Cookie 存储。";
+"No Chromium browser was found." = "没有找到基于 Chromium 的浏览器。";
+"No Devin session found. Sign in at app.devin.ai first." = "没找到 Devin 的登录会话。先去 app.devin.ai 登录一次。";
+"Token and organization" = "Token 与组织";
 "Read from %@." = "已从 %@ 读取。";
 "No Ollama session found. Sign in at ollama.com first." = "没找到 Ollama 的登录信息，请先在 ollama.com 登录。";
 "Copied from your browser. Stored encrypted on this Mac." = "从浏览器复制。加密保存在本机。";
@@ -303,6 +308,7 @@
 "Add an API key in Settings." = "在设置里填入 API key。";
 "Devin isn't installed." = "没有安装 Devin。";
 "Open Devin and sign in, so it can record your plan." = "打开 Devin 并登录，它才会记下你的套餐。";
+"Add your Devin organization after the token, separated by a space." = "在 token 后面空一格，再填上你的 Devin 组织。";
 "Stored encrypted on this Mac." = "加密保存在本机。";
 "From z.ai. Stored encrypted on this Mac." = "在 z.ai 获取。加密保存在本机。";
 "%@ points" = "%@ 点";

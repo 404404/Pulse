@@ -89,7 +89,7 @@ Pulse 仅呈现各服务上报的数字，绝不依靠本地 Token 粗略估算�
 | **Volcengine（火山引擎）** | `arkcli` 登录，或粘贴 Volcengine Access Key 对（签名走 Top OpenAPI） | Ark Coding / Agent 套餐；自动模式优先使用粘贴的密钥 |
 | **Command Code** | 设置中填入 API Key，或读取 `cmd auth login` 已保存的登录 | 以美元计费的余额；含滚动 5 小时 / 周限额与月度套餐行（标记为**估算**） |
 | **DeepSeek** | 设置中填入 API Key；官方文档化的 `GET /user/balance` | 仅报告预付余额、无额度；圆环的度量基准由你选择 |
-| **Devin** | 什么都不用填——读取 Devin 自己的应用存下的套餐信息 | 每日与每周额度均由 Devin 自己报告。该记录在应用启动时写入，所以卡片会标明读数的新旧（[Docs/providers/devin.md](Docs/providers/devin.md)）|
+| **Devin** | 什么都不用填——读取浏览器里的登录会话，不会弹钥匙串 | 每日与每周额度均由 Devin 自己报告。读不到时回落到 Devin 应用存下的套餐，卡片会标明读数的新旧（[Docs/providers/devin.md](Docs/providers/devin.md)）|
 
 ---
 

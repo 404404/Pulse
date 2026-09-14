@@ -374,7 +374,11 @@ final class UsageStore {
         let volcengine = VolcengineUsageService(enteredKey: apiKeys[.volcengine])
         let volcengineSource = settings.source(for: AccountKey(.volcengine))
         let commandCode = CommandCodeUsageService(enteredKey: apiKeys[.commandCode])
-        let devin = DevinUsageService()
+        let devin = DevinUsageService(
+            enteredKey: apiKeys[.devin],
+            browser: settings.sessionBrowser(for: AccountKey(.devin))
+        )
+        let devinSource = settings.source(for: AccountKey(.devin))
         let deepSeek = DeepSeekUsageService(
             enteredKey: apiKeys[.deepSeek],
             basis: settings.deepSeekBasis,
@@ -458,7 +462,7 @@ final class UsageStore {
                 ? await deepSeek.fetch()
                 : ProviderUsage.unavailable(.deepSeek, reason: .loading)
             async let devinUsage = wanted.contains(.devin)
-                ? await devin.fetch()
+                ? await devin.fetch(source: devinSource)
                 : ProviderUsage.unavailable(.devin, reason: .loading)
 
             let (rawCodex, rawClaude, rawAntigravity, rawOpenCode) =
@@ -632,7 +636,10 @@ final class UsageStore {
         let minimax = MiniMaxUsageService(provider: provider, enteredKey: key)
         let volcengine = VolcengineUsageService(enteredKey: key)
         let commandCode = CommandCodeUsageService(enteredKey: key)
-        let devinAccount = DevinUsageService()
+        let devinAccount = DevinUsageService(
+            enteredKey: key,
+            browser: settings.sessionBrowser(for: account)
+        )
         let deepSeek = DeepSeekUsageService(
             enteredKey: key,
             basis: settings.deepSeekBasis,
@@ -677,7 +684,7 @@ final class UsageStore {
             case .deepSeek:
                 raw = await deepSeek.fetch()
             case .devin:
-                raw = await devinAccount.fetch()
+                raw = await devinAccount.fetch(source: source)
             }
             }
 

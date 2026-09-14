@@ -47,7 +47,40 @@ import SQLite3
 /// it costs nothing — no credential, no network, no keychain prompt, no Full
 /// Disk Access — and someone who keeps Devin open all day is exactly the
 /// person whose reading goes stale, which the card now says out loud.
+///
+/// ## The other route
+///
+/// `GET https://app.devin.ai/api/<org>/billing/quota/usage`, with a Bearer
+/// token the user pastes. That one is live, and it is why this provider has a
+/// route picker: the app's cache answers when there is no token, and the
+/// endpoint answers when there is.
+///
+/// **The credential is read from the browser, not pasted.** It is not in the
+/// app's own storage — checked; the app authenticates through the Codeium
+/// extension's session against `server.codeium.com`, a different credential
+/// for a different API. It *is* in a Chromium browser's `localStorage` for
+/// `app.devin.ai`, which `ChromiumLocalStorage` reads without a keychain
+/// prompt because `localStorage` is not encrypted. Reading one origin out of a
+/// thirty-megabyte profile takes about forty milliseconds.
+///
+/// **Read on every fetch rather than saved.** A stored copy would be a second
+/// place for the session to go stale, and the one that cannot be refreshed on
+/// its own; the browser's copy is by definition the current one. A pasted
+/// value still wins where there is one, for anyone whose browser is not a
+/// Chromium — see `Credential`.
 struct DevinUsageService: Sendable {
+    /// What the user pasted, which overrides the browser. Nil where nothing
+    /// was, which is not an error: the browser answers, and failing that the
+    /// app's own cache is a complete route on its own.
+    let enteredKey: String?
+    /// The browser to read, or nil to try the default one and then the rest.
+    let browser: BrowserCookies.Browser?
+
+    init(enteredKey: String? = nil, browser: BrowserCookies.Browser? = nil) {
+        self.enteredKey = enteredKey
+        self.browser = browser
+    }
+
     /// Where the app keeps its state. Both names are checked because the
     /// product was renamed: an Electron app's support directory follows its
     /// product name, so a Mac that ran Windsurf before the rename carries the
@@ -62,7 +95,36 @@ struct DevinUsageService: Sendable {
         "windsurf.settings.cachedPlanInfo%",
     ]
 
-    func fetch() async -> ProviderUsage {
+    func fetch(source: UsageSource) async -> ProviderUsage {
+        let credential = Credential(pasted: enteredKey) ?? Self.fromBrowser(browser)?.credential
+
+        switch source {
+        case .endpoint:
+            guard let credential else {
+                return ProviderUsage.unavailable(.devin, reason: .apiKeyMissing).recording(.endpoint)
+            }
+            return await Self.live(credential).recording(.endpoint)
+
+        case .tooling:
+            return cached().recording(.appCache)
+
+        case .automatic, .desktopApp:
+            guard let credential else { return cached().recording(.appCache) }
+
+            let live = await Self.live(credential).recording(.endpoint)
+            // A token that is simply wrong should say so rather than falling
+            // through to a reading from breakfast that looks like it worked.
+            guard case .unavailable(let reason) = live.state,
+                  reason == .unreachable || reason == .serverError || reason == .rateLimited
+            else { return live }
+
+            return cached().recording(.appCache, after: live.attempts)
+        }
+    }
+
+    // MARK: - The app's own cache
+
+    private func cached() -> ProviderUsage {
         guard let support = Self.supportDirectory() else {
             return .unavailable(.devin, reason: .devinAppMissing)
         }
@@ -93,6 +155,413 @@ struct DevinUsageService: Sendable {
     /// whether a ring is worth offering at all — there is nothing to paste
     /// here, so an install is the only evidence there is.
     static func isInstalled() -> Bool { supportDirectory() != nil }
+
+    // MARK: - The pasted credential
+
+    /// A Bearer token, and the organisation the quota path is scoped by.
+    ///
+    /// One field, because the whole store, the whole settings row and the
+    /// whole "is it set" test are built around one string per provider — the
+    /// same reason Volcengine's holds a key pair. Here the two are separated
+    /// by whitespace rather than a colon: a token may contain one and an
+    /// organisation URL certainly does.
+    ///
+    /// Accepted, in any combination:
+    ///
+    /// ```text
+    /// eyJ… my-team
+    /// Authorization: Bearer eyJ… org_1a2b3c
+    /// eyJ… https://app.devin.ai/org/my-team/settings
+    /// ```
+    struct Credential: Equatable, Sendable {
+        let token: String
+        /// Already normalised to the path segment it belongs in —
+        /// `org/<slug>` or `organizations/<id>`. Nil when nothing was given,
+        /// which the endpoint refuses; it is a separate reason from a missing
+        /// token so the message can say which half is missing.
+        let organization: String?
+
+        init?(pasted: String?) {
+            var text = pasted?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !text.isEmpty else { return nil }
+
+            // A whole header line, as copied out of a browser's network tab.
+            if let colon = text.firstIndex(of: ":"),
+               text[text.startIndex..<colon].lowercased() == "authorization" {
+                text = String(text[text.index(after: colon)...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if text.lowercased().hasPrefix("bearer ") {
+                text = String(text.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            let parts = text.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard let token = parts.first, !token.isEmpty else { return nil }
+
+            self.token = token
+            organization = parts.dropFirst().first.flatMap(Self.normalize)
+        }
+
+        /// The same two values, out of a browser's `localStorage`.
+        ///
+        /// Nil unless **both** are there. Half a session is not a credential:
+        /// it would fire a request that can only fail, and — worse — stop the
+        /// search at a browser that has nothing to offer.
+        init?(storage: [String: String]) {
+            guard let token = Self.token(in: storage), let organization = Self.organization(in: storage) else {
+                return nil
+            }
+            self.token = token
+            self.organization = Self.normalize(organization)
+            guard self.organization != nil else { return nil }
+        }
+
+        /// `app.devin.ai` keeps it inside `auth1_session`; `windsurf.com`
+        /// keeps the same thing flat, under `devin_auth1_token`. Anything that
+        /// parses as an object with a plausible token in it is accepted after
+        /// those two, because the key holding it has been renamed once already.
+        private static func token(in storage: [String: String]) -> String? {
+            if let session = storage["auth1_session"], let token = auth1(in: session) { return token }
+            if let flat = storage["devin_auth1_token"].flatMap(unquote), flat.count > 20 { return flat }
+
+            for value in storage.values.sorted() {
+                if let token = auth1(in: value) { return token }
+            }
+            for value in storage.values.sorted() {
+                guard let object = object(in: value),
+                      let token = object["access_token"] as? String, token.count > 20
+                else { continue }
+                return token
+            }
+            return nil
+        }
+
+        private static func auth1(in value: String) -> String? {
+            guard let object = object(in: value), let token = object["token"] as? String,
+                  token.hasPrefix("auth1_"), token.count > 20
+            else { return nil }
+            return token
+        }
+
+        /// The internal id, which is what the account's own pages are scoped
+        /// by. The key's suffix is the *external* slug and is often the string
+        /// `null`, so the value is what is read rather than the name.
+        private static func organization(in storage: [String: String]) -> String? {
+            let live = storage
+                .filter { $0.key.hasPrefix("last-internal-org-for-external-org-v1-") }
+                .sorted { $0.key < $1.key }
+            for (_, value) in live {
+                if let id = unquote(value), isInternalID(id) { return id }
+            }
+
+            if let flat = storage["devin_primary_org_id"].flatMap(unquote), !flat.isEmpty { return flat }
+
+            // The list every page falls back to when the "last used" note is
+            // missing. One organisation is the ordinary case; where there are
+            // several, the first is the one its own UI opens.
+            for (key, value) in storage.sorted(by: { $0.key < $1.key }) where key.hasPrefix("known-org-ids") {
+                guard let ids = try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String],
+                      let first = ids.first(where: { isInternalID($0) })
+                else { continue }
+                return first
+            }
+            return nil
+        }
+
+        private static func object(in value: String) -> [String: Any]? {
+            try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any]
+        }
+
+        /// Chromium hands back what the page stored, and a page may have
+        /// stored a JSON string rather than a bare one.
+        private static func unquote(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let decoded = try? JSONDecoder().decode(String.self, from: Data(trimmed.utf8)) {
+                return decoded.isEmpty ? nil : decoded
+            }
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        /// A slug, an internal `org_…` id, or any `app.devin.ai` URL carrying
+        /// one, reduced to the path segment the API wants. The rules are
+        /// CodexBar's (MIT); nothing here was measured against a live account.
+        static func normalize(_ raw: String) -> String? {
+            var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return nil }
+
+            if let url = URL(string: value), let host = url.host()?.lowercased(),
+               host == "devin.ai" || host.hasSuffix(".devin.ai") {
+                let segments = url.path().split(separator: "/").map(String.init)
+                if segments.count >= 2, segments[0] == "org" || segments[0] == "organizations" {
+                    value = "\(segments[0])/\(segments[1])"
+                }
+            }
+
+            value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !value.isEmpty else { return nil }
+            if value.hasPrefix("org/") || value.hasPrefix("organizations/") { return value }
+            // `org_` and `org-` are the internal id's prefixes; anything else
+            // is the slug that appears in the address bar.
+            return isInternalID(value) ? "organizations/\(value)" : "org/\(value)"
+        }
+
+        static func isInternalID(_ value: String) -> Bool {
+            value.hasPrefix("org_") || value.hasPrefix("org-")
+        }
+
+        /// The internal id, where the organisation was given as one. It also
+        /// travels as a header, which is how the service resolves an account
+        /// with more than one organisation on it.
+        var internalID: String? {
+            guard let organization, organization.hasPrefix("organizations/") else { return nil }
+            return String(organization.dropFirst("organizations/".count))
+        }
+
+        /// The paths to try, in order. The API is undocumented and the shape
+        /// of this one segment is the part CodexBar found varies, so a 404 on
+        /// the first spelling is tried again as the others rather than
+        /// reported as "no quota".
+        var paths: [String] {
+            guard let organization else { return [] }
+            var paths = [organization]
+            if let internalID { paths.insert(internalID, at: 0) }
+            if organization.hasPrefix("org/") {
+                let slug = String(organization.dropFirst(4))
+                paths.append(slug)
+                if Self.isInternalID(slug) { paths.append("organizations/\(slug)") }
+            }
+            var seen = Set<String>()
+            return paths.filter { seen.insert($0).inserted }.map { "\($0)/billing/quota/usage" }
+        }
+    }
+
+    // MARK: - The browser's session
+
+    /// Devin's session, out of a Chromium browser's `localStorage`.
+    ///
+    /// Two keys under `https://app.devin.ai` carry what the endpoint needs,
+    /// and both were read off this Mac rather than taken from anybody's
+    /// parser:
+    ///
+    /// ```text
+    /// auth1_session                                {"token":"auth1_…","userId":"user-…"}
+    /// last-internal-org-for-external-org-v1-<slug> org-<32 hex>
+    /// ```
+    ///
+    /// The organisation id is **hyphenated** here (`org-`), not underscored,
+    /// which is why `Credential.isInternalID` accepts both.
+    ///
+    /// `windsurf.com` is read as a fallback: the same account signed in
+    /// through the older storefront leaves `devin_auth1_token` and
+    /// `devin_primary_org_id` there, which are the same two values under
+    /// different names.
+    static func fromBrowser(
+        _ browser: BrowserCookies.Browser? = nil
+    ) -> (credential: Credential, browser: BrowserCookies.Browser)? {
+        let browsers = browser.map { [$0] } ?? ChromiumLocalStorage.present()
+
+        // Origin before browser, so a complete session in the second browser
+        // beats half of one in the first: a site can leave a stale key behind
+        // long after the value beside it has gone.
+        for origin in ["https://app.devin.ai", "https://windsurf.com"] {
+            for browser in browsers {
+                for store in ChromiumLocalStorage.stores(browser) {
+                    let values = ChromiumLocalStorage.entries(origin: origin, in: store)
+                    if let credential = Credential(storage: values) { return (credential, browser) }
+                }
+            }
+        }
+        return nil
+    }
+
+    // MARK: - The endpoint
+
+    private static let host = "https://app.devin.ai"
+
+    /// **Measured against a live account**, and against the app's own cache at
+    /// the same moment: the row said 98% and 99% *remaining* while this said
+    /// 2% and 1% *used*, which is the one thing carrying both routes could get
+    /// backwards. The path's shape is the part that is still second-hand —
+    /// CodexBar found it varies — so each spelling is tried in turn.
+    static func live(_ credential: Credential) async -> ProviderUsage {
+        guard !credential.paths.isEmpty else {
+            return .unavailable(.devin, reason: .devinOrganizationMissing)
+        }
+
+        var lastReason = ProviderUsage.Unavailability.unreachable
+        for path in credential.paths {
+            switch await get(path, credential) {
+            case .reply(let data):
+                guard let reply = Reply(json: data) else {
+                    return .unavailable(.devin, reason: .unreadableReply)
+                }
+                let windows = Self.windows(from: reply)
+                guard !windows.isEmpty || reply.overageBalance != nil else {
+                    return .unavailable(.devin, reason: .noLimitsReported)
+                }
+                return ProviderUsage(
+                    account: AccountKey(.devin),
+                    windows: windows,
+                    observedAt: Date(),
+                    state: .live,
+                    // The reply names no plan. The row the app saved does, and
+                    // it is the same account — so the card keeps its plan line
+                    // rather than losing it to the better route.
+                    plan: reply.planName ?? savedPlanName(),
+                    creditBalance: reply.overageBalance.map(money)
+                )
+            case .failed(let reason):
+                // A refused token is refused at every spelling of the path;
+                // only a path that was not found is worth trying again.
+                guard reason == .serverError else { return .unavailable(.devin, reason: reason) }
+                lastReason = reason
+            }
+        }
+        return .unavailable(.devin, reason: lastReason)
+    }
+
+    /// The plan name out of the app's own saved row, for the endpoint to
+    /// borrow. Nil where the app has never run here, which is not a failure:
+    /// the card simply has no plan line.
+    private static func savedPlanName() -> String? {
+        guard let support = supportDirectory() else { return nil }
+        return plan(in: support.appending(path: "User/globalStorage/state.vscdb"))?.planName
+    }
+
+    private enum Fetch {
+        case reply(Data)
+        case failed(ProviderUsage.Unavailability)
+    }
+
+    private static func get(_ path: String, _ credential: Credential) async -> Fetch {
+        guard let url = URL(string: "\(host)/api/\(path)") else { return .failed(.unreadableReply) }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // How the service picks between organisations on one account. Sent
+        // only where the internal id is what was given — a slug is not one.
+        if let internalID = credential.internalID {
+            request.setValue(internalID, forHTTPHeaderField: "x-cog-org-id")
+        }
+        request.timeoutInterval = 15
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+            return .failed(.unreachable)
+        }
+
+        return switch (response as? HTTPURLResponse)?.statusCode {
+        case 200: .reply(data)
+        case 401, 403: .failed(.apiKeyRefused)
+        case 429: .failed(.rateLimited)
+        default: .failed(.serverError)
+        }
+    }
+
+    /// The live reply, which is **not** shaped like the cached row: it reports
+    /// what has been **used** where the row reports what is left, and it names
+    /// its fields in snake case. Measured, 232 bytes of it:
+    ///
+    /// ```json
+    /// { "daily_percentage": 2, "weekly_percentage": 1,
+    ///   "daily_reset_at": "2026-09-14T00:00:00-08:00",
+    ///   "weekly_reset_at": "2026-09-20T00:00:00-08:00",
+    ///   "hide_daily_quota": false, "has_quota_allocation": true,
+    ///   "is_quota_plan": true, "overage_balance": 10 }
+    /// ```
+    ///
+    /// **It names no plan**, so the card's plan line comes from the row the
+    /// app saved — the one place on this Mac that has one.
+    ///
+    /// CodexBar reads a value of 1 or less as a fraction and multiplies it by a
+    /// hundred. **Deliberately not copied.** A genuine 0.4% used would then be
+    /// drawn as 40%, which is a figure nobody reported — and the cached row is
+    /// whole percentages, so a fraction here would be the surprise rather than
+    /// the rule. If a live reply ever proves otherwise it is one line, with
+    /// evidence behind it.
+    struct Reply: Equatable, Sendable {
+        var planName: String?
+        var dailyUsedPercent: Double?
+        var weeklyUsedPercent: Double?
+        var dailyResetAt: Date?
+        var weeklyResetAt: Date?
+        var hideDailyQuota = false
+        var hideWeeklyQuota = false
+        var overageBalance: Double?
+        /// False on an account with no quota to allocate — a legacy credit
+        /// plan, or one that has lapsed. The percentages beside it are then
+        /// not a reading of anything, so they are not drawn.
+        var hasQuotaAllocation = true
+
+        init?(json data: Data) {
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            planName = ["plan_name", "planName", "plan", "tier"]
+                .lazy.compactMap { object[$0] as? String }.first.flatMap { $0.isEmpty ? nil : $0 }
+            dailyUsedPercent = Plan.number(object["daily_percentage"])
+            weeklyUsedPercent = Plan.number(object["weekly_percentage"])
+            dailyResetAt = Self.date(object["daily_reset_at"])
+            weeklyResetAt = Self.date(object["weekly_reset_at"])
+            hideDailyQuota = object["hide_daily_quota"] as? Bool ?? false
+            hideWeeklyQuota = object["hide_weekly_quota"] as? Bool ?? false
+            // Absent means yes: only an explicit `false` says there is no
+            // allowance, and a field that stops being sent must not silently
+            // empty the rings.
+            hasQuotaAllocation = object["has_quota_allocation"] as? Bool ?? true
+            overageBalance = Plan.number(object["overage_balance"])
+                ?? Plan.number(object["overage_balance_cents"]).map { $0 / 100 }
+
+            // Neither window and no money is not a reply, whatever it parsed
+            // as: something else is being read.
+            guard dailyUsedPercent != nil || weeklyUsedPercent != nil || overageBalance != nil else {
+                return nil
+            }
+        }
+
+        /// ISO 8601, epoch seconds, or epoch milliseconds — all three appear in
+        /// CodexBar's account of this API, so all three are read.
+        static func date(_ value: Any?) -> Date? {
+            if let text = value as? String {
+                if let date = ISO8601DateFormatter().date(from: text) { return date }
+                return Double(text).flatMap(epoch)
+            }
+            return Plan.number(value).flatMap(epoch)
+        }
+
+        private static func epoch(_ number: Double) -> Date? {
+            guard number > 0 else { return nil }
+            return Date(timeIntervalSince1970: number > 10_000_000_000 ? number / 1000 : number)
+        }
+    }
+
+    static func windows(from reply: Reply) -> [UsageWindow] {
+        guard reply.hasQuotaAllocation else { return [] }
+
+        var windows: [UsageWindow] = []
+
+        if !reply.hideDailyQuota, let used = reply.dailyUsedPercent {
+            windows.append(
+                UsageWindow(
+                    id: "devin-daily", kind: .daily, scope: nil,
+                    usedFraction: min(max(used / 100, 0), 1),
+                    windowSeconds: 86_400, resetsAt: reply.dailyResetAt
+                )
+            )
+        }
+
+        if !reply.hideWeeklyQuota, let used = reply.weeklyUsedPercent {
+            windows.append(
+                UsageWindow(
+                    id: "devin-weekly", kind: .weekly, scope: nil,
+                    usedFraction: min(max(used / 100, 0), 1),
+                    windowSeconds: 604_800, resetsAt: reply.weeklyResetAt
+                )
+            )
+        }
+
+        return windows
+    }
 
     // MARK: - The file
 
@@ -186,7 +655,7 @@ struct DevinUsageService: Sendable {
         return values
     }
 
-    // MARK: - The reply
+    // MARK: - The cached plan
 
     /// One account's plan, as the app cached it.
     ///
@@ -228,8 +697,9 @@ struct DevinUsageService: Sendable {
 
         /// Booleans are `NSNumber` too, and `NSNumber(true).doubleValue` is 1 —
         /// which would turn `hideDailyQuota` into a percentage if it were ever
-        /// read through here.
-        private static func number(_ value: Any?) -> Double? {
+        /// read through here. Shared with `Reply`, whose fields arrive from
+        /// `JSONSerialization` in exactly the same shapes.
+        static func number(_ value: Any?) -> Double? {
             guard let value = value as? NSNumber,
                   CFGetTypeID(value) != CFBooleanGetTypeID()
             else { return nil }

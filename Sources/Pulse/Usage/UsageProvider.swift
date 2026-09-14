@@ -181,10 +181,10 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// have instead of the picker it needs.
     var hasSourceChoice: Bool {
         switch self {
-        case .claudeCode, .codex, .volcengine: true
+        case .claudeCode, .codex, .volcengine, .devin: true
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .commandCode, .deepSeek, .devin: false
+             .commandCode, .deepSeek: false
         }
     }
 
@@ -216,17 +216,11 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .grokBot:
             (String.localized("Cursor's own login"),
              String.localized("Grok Bot is billed to your Cursor account."))
-        // The app's own cache, which is a route with a caveat worth stating
-        // where the reader will see it: it is written when Devin launches and
-        // not while it runs.
-        case .devin:
-            (String.localized("Devin's own app"),
-             String.localized("Reads what Devin saved the last time it started."))
         // Either a choice of routes, or a key the user pastes: both are asked
         // about elsewhere, so there is nothing here to state.
         case .claudeCode, .codex, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
-             .commandCode, .deepSeek:
+             .commandCode, .deepSeek, .devin:
             nil
         }
     }
@@ -238,7 +232,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// anyone on the plan who doesn't run the CLI on this Mac.
     var usesAPIKey: Bool {
         [.openCodeGo, .kimiCode, .ollamaCloud, .zai, .glmCoding, .minimax, .minimaxCN, .volcengine,
-         .commandCode, .deepSeek].contains(self)
+         .commandCode, .deepSeek, .devin].contains(self)
     }
 
     /// Whether this Mac can see the thing this provider is billing for.
@@ -275,6 +269,16 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// that does not exist.
     var usesSessionCookie: Bool { self == .ollamaCloud }
 
+    /// Whether this provider's credential is read out of a browser rather than
+    /// out of another tool's files.
+    ///
+    /// **Not `usesSessionCookie`**, which is the narrower question of whether
+    /// what is read is a *cookie*. Devin's is a `localStorage` entry, which
+    /// lives in a different file in a different format and — because it is not
+    /// encrypted — needs no keychain permission. Both want the same row in
+    /// Settings: which browser, and a button to go and look.
+    var readsBrowserStorage: Bool { usesSessionCookie || self == .devin }
+
     /// Whether this provider can report anything at all without being set up.
     ///
     /// The key-based ones cannot: with no key they draw a ring that says
@@ -310,6 +314,11 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // signed in, so its presence is evidence the CLI ran here and none at
         // all that there is an account to report on.
         case .commandCode: CommandCodeUsageService.storedKey() != nil
+        // The pasted token buys the *live* route; the app's own saved plan
+        // needs nothing at all, so an install is enough to have something to
+        // say. Without this, adding the paste field would have turned a
+        // working provider into one that waits for a credential.
+        case .devin: DevinUsageService.isInstalled()
         default: false
         }
     }
