@@ -140,19 +140,41 @@ struct SettingsView: View {
                 }
             }
             .listStyle(.sidebar)
-            // Wide enough for the longest name the list can hold —
-            // "GitHub Copilot", with "Command Code" and "Ollama Cloud"
-            // behind it. At the old 170/180/220 every one of those truncated
-            // to an ellipsis, which on a list whose entire job is telling
-            // seventeen products apart is the one thing it must not do. These
-            // are brand names and are not translated, so the requirement does
-            // not move with the language.
+            // **The floor is this frame, not `navigationSplitViewColumnWidth`.**
             //
-            // **`min` is the half that matters**, not `ideal`. AppKit saves the
-            // divider position, so `ideal` is only ever read once per install
-            // and anybody who has already opened this window keeps whatever
-            // width they had; `min` is a clamp and applies to all of them.
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 320)
+            // `ideal:` is read once, when a column is first laid out. The whole
+            // split view carries `.id(settings.language)`, so picking a
+            // language — or launching into one, since `LocalizationSource.use`
+            // runs after the first render — throws the column away and builds a
+            // new one, and the new one does not get its `ideal` back. Measured
+            // on the committed screenshots: 213pt in English, about 150pt in
+            // Chinese, from the same code. `min:` does not rescue it either;
+            // it bounds what a drag may do, it does not widen a column that was
+            // already laid out narrow.
+            //
+            // A `minWidth` on the content is a layout constraint, so it is
+            // re-applied on every rebuild, which is the property this needs.
+            //
+            // 200 is measured, not guessed. Scanning the committed English
+            // screenshot for the rightmost ink in the list puts the longest
+            // label — `GitHub Copilot` — at **150.5pt**, so this leaves about
+            // 50pt of trailing air. 240 was tried first and read as baggy:
+            // 90pt of empty column beside every row.
+            //
+            // **The brand names are the constraint, not the translated rows.**
+            // That is worth writing down because it is the opposite of what it
+            // looks like: "Token 消耗" reaches about 112pt and "开发者集成"
+            // less, both short of the latin names, and CJK being twice the
+            // width per glyph does not make up the difference over so few
+            // characters. So this number does not move with the language — it
+            // moves when a provider with a longer name is added, which is how
+            // `GLM Coding Plan` quietly became the longest.
+            .frame(minWidth: 200)
+            // Still worth setting: these bound what dragging the divider may
+            // do. `ideal` matches the frame so first layout and every rebuild
+            // land on the same width; `max` keeps a stretched sidebar from
+            // eating the pane.
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 320)
             // `.sidebar`, not `.automatic`: this window has no `NSToolbar` —
             // see `SettingsWindowController` on why the title bar is left to
             // AppKit — and automatic placement has nowhere to put the field.
