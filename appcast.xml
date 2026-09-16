@@ -6,6 +6,24 @@
         <description>Updates for Pulse.</description>
         <language>en</language>
         <item>
+            <title>1.1.2</title>
+            <pubDate>Wed, 16 Sep 2026 07:14:08 -0000</pubDate>
+            <sparkle:version>1.1.2</sparkle:version>
+            <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <link>https://github.com/qunqin24/Pulse/releases/tag/v1.1.2</link>
+            <description><![CDATA[<style>
+  h2 { font-size: 1.05em; margin: 0 0 .5em; }
+  ul { margin: 0; padding-left: 1.2em; }
+  li { margin: .3em 0; }
+  p { margin: .8em 0 0; }
+</style><h2>Pulse 1.1.2</h2><p><strong>中文</strong></p><p><strong>新功能</strong></p><ul><li><strong>更多 Token 消耗来源。</strong> 新增 Gemini CLI、Cline、Roo Code、OpenClaw、GitHub Copilot 等本地记录读取，以及 Cursor、Trae 等导出格式。部分来源需要先导出或捕获记录；缺少 token 计数的来源不会被当作零用量。不完整计数、无法解码的记录和仅有会话日期的数据会明确标注。<a href="https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md">来源与验证范围</a>。</li><li><strong>按模型查看详情。</strong> 点击模型即可查看输入、输出、缓存读写、每日与每小时消耗、Agent 分布及 API 费用估算；支持排序和分页。历史图表悬停即显示日期或小时及 token 数量。费用按公开 API 价格折算，不是订阅账单。</li><li><strong>更容易打开设置。</strong> 右键浮动栏可打开设置；新增可自行设置的全局快捷键，用于打开设置和显示或隐藏浮动栏，默认不绑定按键。</li><li><strong>繁體中文、日本語、한국어。</strong> 界面和 README 新增三种语言，大数缩写使用各语言对应的万、亿单位。</li></ul><p><strong>改进与修复</strong></p><ul><li>第一方没有公布价格的模型可使用对应套餐商的公开价格；日汇总、模型详情和会话计价保持一致，Kilo CLI 使用自己的价格来源。</li><li>Antigravity IDE 读取自身的会话存储；Devin 数据库记录不再被误标为仅来自 CLI，已匹配的数据库与 Desktop 捕获不会重复统计。</li><li>仅有日期的跨天汇总记录也按所选区间统计，会话列表不再将昨天的消耗带入“今天”。</li><li>Command Code 的 rewind 保留已经发生的消耗，重复记录只统计一次，模型归属沿各自分支解析。</li><li>Token 消耗默认统计最近一周，并记住上次选择的区间；旧统计缓存会自动重读，离线升级仍可回退使用已有价格表。</li><li>修复切换语言后设置侧栏变窄的问题，并补充 Agent 图标与新版界面截图。</li></ul><p><strong>English</strong></p><p><strong>New</strong></p><ul><li><strong>More token-spend sources.</strong> Added local-record readers for Gemini CLI, Cline, Roo Code, OpenClaw, GitHub Copilot and more, plus export formats from Cursor, Trae and others. Some sources require a prior export or capture; sources without token counters are not presented as zero usage. Incomplete counts, unreadable compressed records and session-date-only timing are identified. <a href="https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md">Sources and validation coverage</a>.</li><li><strong>Model details.</strong> Open a model to inspect input, output, cache reads and writes, daily and hourly usage, contributions by agent and API cost estimates, with sortable, paged tables. Hover over history charts for the date or hour and token count. Costs use published API rates and are not a subscription bill.</li><li><strong>Easier access to Settings.</strong> Right-click the floating rail to open Settings. Optional global shortcuts open Settings or show and hide the rail; both are unassigned by default.</li><li><strong>Traditional Chinese, Japanese and Korean.</strong> Added three interface and README translations, with large-number abbreviations using each language&#x27;s own myriad units.</li></ul><p><strong>Changed and fixed</strong></p><ul><li>Models without a first-party price can use their plan vendor&#x27;s published rate. Day, model and session amounts agree, and Kilo CLI uses its own vendor.</li><li>Antigravity IDE reads its own conversation store. Devin&#x27;s shared database is no longer labelled CLI-only, and matched database sessions and Desktop captures are counted once.</li><li>Cross-day aggregate records respect the selected span even when only their dates are known; Today no longer includes yesterday&#x27;s consumption in the session list.</li><li>Command Code rewinds retain consumption that already occurred. Replayed records count once, and model attribution follows each reply&#x27;s own branch.</li><li>Token spend defaults to the last week and remembers the selected span. Older ledgers are reread automatically; an offline upgrade can still fall back to its existing price table.</li><li>Fixed the Settings sidebar narrowing after a language change, and added agent icons and updated screenshots.</li></ul><p><a href="https://github.com/qunqin24/Pulse/releases/tag/v1.1.2">Release notes on GitHub</a></p>]]></description>
+            <enclosure url="https://github.com/qunqin24/Pulse/releases/download/v1.1.2/Pulse-1.1.2.zip"
+                       length="7405119"
+                       type="application/octet-stream"
+                       sparkle:edSignature="iaG0Xhq+Usj71D1q50j21iOKihqNYk0pfxWR2jqCxv55qVan51mV+kEeuKNT5TtwHlifOp+zrlglSic+89ZaDg==" />
+        </item>
+        <item>
             <title>1.1.1</title>
             <pubDate>Mon, 14 Sep 2026 07:58:26 -0000</pubDate>
             <sparkle:version>1.1.1</sparkle:version>
