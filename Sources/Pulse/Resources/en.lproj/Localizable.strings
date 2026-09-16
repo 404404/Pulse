@@ -513,3 +513,14 @@
 "Previous page" = "Previous page";
 "Next page" = "Next page";
 "Rows per page" = "Rows per page";
+"Shortcuts" = "Shortcuts";
+"Open settings" = "Open settings";
+"Reaches this window with the menu bar icon out of sight." = "Reaches this window with the menu bar icon out of sight.";
+"Show or hide the panel" = "Show or hide the panel";
+"Draws the usage rail, or takes it away." = "Draws the usage rail, or takes it away.";
+"Another app is already using this combination." = "Another app is already using this combination.";
+"Record a shortcut" = "Record a shortcut";
+"Clear this shortcut" = "Clear this shortcut";
+"Not set" = "Not set";
+"Press keys…" = "Press keys…";
+"Add ⌘, ⌥ or ⌃" = "Add ⌘, ⌥ or ⌃";

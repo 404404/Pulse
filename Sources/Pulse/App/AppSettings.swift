@@ -47,6 +47,28 @@ final class AppSettings {
         }
     }
 
+    /// The key combination that opens settings from anywhere, or nil.
+    ///
+    /// Deliberately no `onChange`: that is the usage loop's hook and it
+    /// refetches every provider when it fires. A shortcut is not a reading.
+    /// Whoever sets one tells `GlobalShortcutMonitor` directly, which is the
+    /// only thing that has to hear about it.
+    var openSettingsShortcut: GlobalShortcut? {
+        didSet {
+            guard openSettingsShortcut != oldValue else { return }
+            UserDefaults.standard.set(openSettingsShortcut?.storage, forKey: Key.openSettingsShortcut)
+        }
+    }
+
+    /// The key combination that draws the floating panel or takes it away, or
+    /// nil. Same rule about `onChange` as the one above.
+    var togglePanelShortcut: GlobalShortcut? {
+        didSet {
+            guard togglePanelShortcut != oldValue else { return }
+            UserDefaults.standard.set(togglePanelShortcut?.storage, forKey: Key.togglePanelShortcut)
+        }
+    }
+
     /// Where DeepSeek's ring gets its denominator.
     ///
     /// DeepSeek reports a prepaid balance and no allowance at all, so unlike
@@ -683,6 +705,8 @@ final class AppSettings {
         isPanelVisible: Bool = true,
         hidesInFullScreen: Bool = true,
         followsActiveDisplay: Bool = false,
+        openSettingsShortcut: GlobalShortcut? = nil,
+        togglePanelShortcut: GlobalShortcut? = nil,
         deepSeekBasis: DeepSeekBasis = .default,
         deepSeekBudget: Double? = nil,
         deepSeekCurrency: String? = nil,
@@ -717,6 +741,8 @@ final class AppSettings {
         self.isPanelVisible = isPanelVisible
         self.hidesInFullScreen = hidesInFullScreen
         self.followsActiveDisplay = followsActiveDisplay
+        self.openSettingsShortcut = openSettingsShortcut
+        self.togglePanelShortcut = togglePanelShortcut
         self.deepSeekBasis = deepSeekBasis
         self.deepSeekBudget = deepSeekBudget
         self.deepSeekCurrency = deepSeekCurrency
@@ -963,6 +989,10 @@ final class AppSettings {
             isPanelVisible: visible,
             hidesInFullScreen: defaults.object(forKey: Key.hidesInFullScreen) as? Bool ?? true,
             followsActiveDisplay: defaults.object(forKey: Key.followsActiveDisplay) as? Bool ?? false,
+            openSettingsShortcut: defaults.string(forKey: Key.openSettingsShortcut)
+                .flatMap(GlobalShortcut.init(storage:)),
+            togglePanelShortcut: defaults.string(forKey: Key.togglePanelShortcut)
+                .flatMap(GlobalShortcut.init(storage:)),
             deepSeekBasis: defaults.string(forKey: Key.deepSeekBasis)
                 .flatMap(DeepSeekBasis.init(rawValue:)) ?? .default,
             deepSeekBudget: defaults.object(forKey: Key.deepSeekBudget) as? Double,
@@ -1073,6 +1103,8 @@ final class AppSettings {
         static let extraAccounts = "settings.extraAccounts"
         static let hidesInFullScreen = "settings.hidesInFullScreen"
         static let followsActiveDisplay = "settings.followsActiveDisplay"
+        static let openSettingsShortcut = "settings.openSettingsShortcut"
+        static let togglePanelShortcut = "settings.togglePanelShortcut"
         static let deepSeekBasis = "settings.deepSeekBasis"
         static let deepSeekBudget = "settings.deepSeekBudget"
         static let deepSeekCurrency = "settings.deepSeekCurrency"

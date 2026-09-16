@@ -9,6 +9,10 @@ struct SettingsView: View {
     let placement: PanelPlacement
     let update: AppUpdate
     let alerts: UsageAlerts
+    /// Not for reading settings — those are in `settings` — but for the one
+    /// thing only the monitor knows: whether the window server would take the
+    /// combination.
+    let shortcuts: GlobalShortcutMonitor
 
     @Bindable var navigation: SettingsNavigation
     private var pane: SettingsPane {
@@ -777,6 +781,36 @@ struct SettingsView: View {
                 }
             }
 
+            SettingsGroup(String.localized("Shortcuts")) {
+                SettingsRow(
+                    String.localized("Open settings"),
+                    subtitle: shortcutSubtitle(
+                        for: .openSettings,
+                        when: String.localized("Reaches this window with the menu bar icon out of sight.")
+                    )
+                ) {
+                    ShortcutField(shortcut: settings.openSettingsShortcut) { shortcut in
+                        settings.openSettingsShortcut = shortcut
+                        shortcuts.apply(settings)
+                    }
+                }
+
+                SettingsRowDivider()
+
+                SettingsRow(
+                    String.localized("Show or hide the panel"),
+                    subtitle: shortcutSubtitle(
+                        for: .togglePanel,
+                        when: String.localized("Draws the usage rail, or takes it away.")
+                    )
+                ) {
+                    ShortcutField(shortcut: settings.togglePanelShortcut) { shortcut in
+                        settings.togglePanelShortcut = shortcut
+                        shortcuts.apply(settings)
+                    }
+                }
+            }
+
             SettingsGroup(String.localized("Language")) {
                 SettingsRow(
                     String.localized("Interface language"),
@@ -795,6 +829,20 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// What a shortcut row says under its title.
+    ///
+    /// A combination the window server refused is one that will never fire, and
+    /// saying nothing would leave the reader to work that out by pressing it —
+    /// so the clash takes the line over while it lasts.
+    private func shortcutSubtitle(
+        for action: GlobalShortcutMonitor.Action,
+        when available: String
+    ) -> String {
+        shortcuts.unavailable.contains(action)
+            ? .localized("Another app is already using this combination.")
+            : available
     }
 
     /// The login item's state is the system's to hold, so this says what the
@@ -2408,6 +2456,7 @@ enum SettingsPane: Hashable {
         placement: PanelPlacement(),
         update: AppUpdate(),
         alerts: UsageAlerts(settings: AppSettings()),
+        shortcuts: GlobalShortcutMonitor(),
         navigation: SettingsNavigation()
     )
 }

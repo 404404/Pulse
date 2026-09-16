@@ -14,11 +14,13 @@ A joined sentence needs no extra space after a Chinese full stop (`。`). `glass
 
 While Liquid Glass is on, the caption still says to drag the panel by a ring. That is current UI. The historical “glass swallows input” diagnosis is uncertain; [rings-and-surface.md](rings-and-surface.md).
 
-Group order in the general pane: **Floating panel → Notifications → Refresh → Order → Application → Language**. The two groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is sixteen rows.
+Group order in the general pane: **Floating panel → Notifications → Refresh → Order → Application → Shortcuts → Language**. The two groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is sixteen rows.
 
 **Turn red at** lives at the foot of that group: `AppSettings.warningThreshold`, a picker of 60–90%. It moves only the amber→red step; spent is the provider's word and is red whatever the picker says, which is what its subtitle is for. The picker keeps its localized title for accessibility even though its visible label is supplied by the row. [rings-and-surface.md](rings-and-surface.md)
 
 The usage-interval group is named **Refresh**, not Updates.
+
+**Shortcuts** sits with Application because both are about the app rather than about a reading, and above Language because Language is the last thing anybody looks for. Two rows, both empty until set, each a `ShortcutField`: click it, press the combination, ⎋ leaves it alone and ⌫ takes it away. The subtitle is the row's own line **unless** the window server refused the combination, in which case the clash takes the line over — that is the only thing the monitor knows and the pane does not. Setting one writes the setting and calls `GlobalShortcutMonitor.apply` there and then; shortcuts deliberately do **not** go through `AppSettings.onChange`, which refetches every provider. Rules and why hot keys rather than an event tap: [input.md](input.md).
 
 An account pane grows a **Notifications** group of its own where `Provider.reportsSpendableBalance` is true — a "warn below" figure in money. Not a row under Connection, which is about credentials and routes, and not in the general pane's Notifications group either: the figure is per account, because the providers that report a balance do not price in the same currency. [../notifications.md](../notifications.md)
 

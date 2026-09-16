@@ -513,3 +513,14 @@
 "Previous page" = "上一页";
 "Next page" = "下一页";
 "Rows per page" = "每页条数";
+"Shortcuts" = "快捷键";
+"Open settings" = "打开设置";
+"Reaches this window with the menu bar icon out of sight." = "菜单栏图标被挤掉时，也能打开这个窗口。";
+"Show or hide the panel" = "显示或隐藏面板";
+"Draws the usage rail, or takes it away." = "展开用量条，或把它收走。";
+"Another app is already using this combination." = "这个组合键已被其他 App 占用。";
+"Record a shortcut" = "录制快捷键";
+"Clear this shortcut" = "清除这个快捷键";
+"Not set" = "未设定";
+"Press keys…" = "按下组合键…";
+"Add ⌘, ⌥ or ⌃" = "需要 ⌘、⌥ 或 ⌃";

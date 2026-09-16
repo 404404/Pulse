@@ -36,6 +36,22 @@ Click starts a provider-scoped refresh. `UsageStore.isRefreshing` : the usage ar
 
 A click is matched against the **displayed slots** the controller builds through `RailSlot.rail(for:isSplit:groups:)`, not `Provider.allCases`.
 
+## Secondary click opens the panel's menu
+
+`FloatingPanel.sendEvent` also takes `.rightMouseDown`, and `.leftMouseDown` **with control held** — a control-click is a right click on macOS, and letting it fall through to `begin(_:)` starts carrying the panel instead. Same geometry as the drag (`grabArea`), so what can be picked up can be right-clicked, **the sliver included** — the rail is wound down most of the time, and a menu reachable only after hovering is one more thing to know.
+
+Taken in `sendEvent` rather than with SwiftUI's `.contextMenu`, for the reason every other press is: this is a non-key accessory panel and SwiftUI's own input handling is not reliable on it.
+
+`AppDelegate.panelMenu()` builds it — settings, quit, and an available update — and builds it **fresh on every click**, so an update found since the last one is on it. The menu exists because a full menu bar is where Pulse's icon stops being reachable ([issue #24](https://github.com/qunqin24/Pulse/issues/24)).
+
+`placement.isMenuOpen` is set for the span of `popUp`, which runs its own tracking loop. Without it the pointer is on the menu — off the panel by every test `pointerMoved` makes — and the rail winds down to its sliver the moment the menu appears beside it. `scheduleHide` guards on it exactly as it guards on `isDragging`, and re-arms the same way.
+
+## Global shortcuts
+
+`GlobalShortcut` / `GlobalShortcutMonitor` (App/). `RegisterEventHotKey`, **not** an event tap: a tap that sees other apps' keystrokes needs Accessibility permission, and that is not a trade worth offering to open a settings window. Two actions, both **unset until somebody sets one** — a default combination is a key taken out of every other app's hands on behalf of someone who never asked.
+
+A combination needs ⌘, ⌥ or ⌃ in it; ⇧ alone is refused, and so is a bare key, function keys included. `⇧P` would take the letter P away from every text field on the Mac. A registration the window server refuses (another app holds the keys — or Pulse's own other shortcut does) lands in `unavailable`, and settings says so: a shortcut that quietly does nothing is worse than none, because the reader blames the feature. Recording is a **local event monitor**, installed only while recording and swallowing what it sees, which is what lets ⌘Q be recorded rather than quitting the app. [settings.md](settings.md)
+
 ## Settings fields
 
 Click-away ending editing is `SettingsWindow.sendEvent`, geometry vs the field, never `hitTest`. [settings.md](settings.md).
