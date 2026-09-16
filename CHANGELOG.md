@@ -13,37 +13,37 @@ bullets, `**bold**`, `` `code` `` and `[links](https://example.com)`.
 
 **新功能**
 
-- **更多 Token 消耗来源。** 新增 Gemini CLI、Cline、Roo Code、OpenClaw、GitHub Copilot 等本地记录读取，以及 Cursor、Trae 等导出格式。部分来源需要先导出或捕获记录；缺少 token 计数的来源不会被当作零用量。不完整计数、无法解码的记录和仅有会话日期的数据会明确标注。[来源与验证范围](https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md)。
-- **按模型查看详情。** 点击模型即可查看输入、输出、缓存读写、每日与每小时消耗、Agent 分布及 API 费用估算；支持排序和分页。历史图表悬停即显示日期或小时及 token 数量。费用按公开 API 价格折算，不是订阅账单。
-- **更容易打开设置。** 右键浮动栏可打开设置；新增可自行设置的全局快捷键，用于打开设置和显示或隐藏浮动栏，默认不绑定按键。
-- **繁體中文、日本語、한국어。** 界面和 README 新增三种语言，大数缩写使用各语言对应的万、亿单位。
+- **更多 Token 消耗来源。** 新增 Gemini CLI、Cline、Roo Code、OpenClaw、GitHub Copilot 等本地记录读取，并支持 Cursor、Trae 等导出数据。部分来源需要先导出或捕获记录；可读格式及验证范围见[来源说明](https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md)。
+- **模型用量详情。** 点击模型可查看输入、输出、缓存读写、每日与每小时消耗，以及各 Agent 的贡献；明细表支持排序和分页。费用按公开 API 价格折算，不是订阅账单。
+- **图表悬停读数。** 指向历史图表即可查看对应日期或小时的 token 数量，较短的柱形和零用量时段也能选中。
+- **浮动栏菜单与全局快捷键。** 右键浮动栏即可打开设置；可自行设置快捷键，用于打开设置或显示、隐藏浮动栏。默认不绑定按键。
+- **繁体中文、日语和韩语。** 界面与 README 新增三种语言，大数缩写使用各语言对应的单位。
 
 **改进与修复**
 
-- 第一方没有公布价格的模型可使用对应套餐商的公开价格；日汇总、模型详情和会话计价保持一致，Kilo CLI 使用自己的价格来源。
-- Antigravity IDE 读取自身的会话存储；Devin 数据库记录不再被误标为仅来自 CLI，已匹配的数据库与 Desktop 捕获不会重复统计。
-- 仅有日期的跨天汇总记录也按所选区间统计，会话列表不再将昨天的消耗带入“今天”。
-- Command Code 的 rewind 保留已经发生的消耗，重复记录只统计一次，模型归属沿各自分支解析。
-- Token 消耗默认统计最近一周，并记住上次选择的区间；旧统计缓存会自动重读，离线升级仍可回退使用已有价格表。
-- 修复切换语言后设置侧栏变窄的问题，并补充 Agent 图标与新版界面截图。
+- 补全仅由套餐商公布价格的模型计价，修复 Kilo CLI 的价格来源；日汇总、模型详情和会话金额保持一致。
+- Antigravity IDE 读取自身的会话存储；Devin 记录不再误标为仅来自 CLI，已匹配的数据库与 Desktop 捕获只统计一次。
+- 跨天汇总记录只计入所选区间；Command Code 回退对话后仍保留已经发生的消耗，重复记录不会重复计数。
+- Token 消耗默认显示最近一周，并记住所选区间；缺失价格、不完整计数和不可用的小时明细会明确标注，旧缓存自动重读。
+- 修复切换语言后设置侧栏变窄的问题，补充 Agent 图标并更新界面截图。
 
 **English**
 
 **New**
 
-- **More token-spend sources.** Added local-record readers for Gemini CLI, Cline, Roo Code, OpenClaw, GitHub Copilot and more, plus export formats from Cursor, Trae and others. Some sources require a prior export or capture; sources without token counters are not presented as zero usage. Incomplete counts, unreadable compressed records and session-date-only timing are identified. [Sources and validation coverage](https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md).
-- **Model details.** Open a model to inspect input, output, cache reads and writes, daily and hourly usage, contributions by agent and API cost estimates, with sortable, paged tables. Hover over history charts for the date or hour and token count. Costs use published API rates and are not a subscription bill.
-- **Easier access to Settings.** Right-click the floating rail to open Settings. Optional global shortcuts open Settings or show and hide the rail; both are unassigned by default.
-- **Traditional Chinese, Japanese and Korean.** Added three interface and README translations, with large-number abbreviations using each language's own myriad units.
+- **More token-spend sources.** Added local-record readers for Gemini CLI, Cline, Roo Code, OpenClaw, GitHub Copilot and more, plus exports from Cursor, Trae and others. Some sources require a prior export or capture. See [sources and validation coverage](https://github.com/qunqin24/Pulse/blob/main/Docs/token-spend-sources.md) for supported formats.
+- **Model usage details.** Open a model to inspect input, output, cache reads and writes, daily and hourly usage, and contributions by agent. Detail tables support sorting and paging. Costs use published API rates and are not a subscription bill.
+- **Chart hover values.** Point at a history chart to see the token count for a date or hour, including short bars and periods with no usage.
+- **Rail menu and global shortcuts.** Right-click the floating rail to open Settings. Optional shortcuts open Settings or show and hide the rail; both are unassigned by default.
+- **Traditional Chinese, Japanese and Korean.** Added three interface and README translations, with large-number abbreviations using each language's own units.
 
 **Changed and fixed**
 
-- Models without a first-party price can use their plan vendor's published rate. Day, model and session amounts agree, and Kilo CLI uses its own vendor.
-- Antigravity IDE reads its own conversation store. Devin's shared database is no longer labelled CLI-only, and matched database sessions and Desktop captures are counted once.
-- Cross-day aggregate records respect the selected span even when only their dates are known; Today no longer includes yesterday's consumption in the session list.
-- Command Code rewinds retain consumption that already occurred. Replayed records count once, and model attribution follows each reply's own branch.
-- Token spend defaults to the last week and remembers the selected span. Older ledgers are reread automatically; an offline upgrade can still fall back to its existing price table.
-- Fixed the Settings sidebar narrowing after a language change, and added agent icons and updated screenshots.
+- Added pricing for models listed only by their plan vendor and corrected Kilo CLI's price source. Day, model and session amounts agree.
+- Antigravity IDE reads its own conversation store. Devin records are no longer labelled CLI-only, and matched database sessions and Desktop captures count once.
+- Cross-day aggregate records contribute only their in-range usage. Command Code rewinds retain consumption that already occurred, and replayed records are not counted twice.
+- Token spend defaults to the last week and remembers the selected span. Missing prices, incomplete counts and unavailable hourly detail are identified; older caches are reread automatically.
+- Fixed the Settings sidebar narrowing after a language change, added agent icons and updated screenshots.
 
 ## 1.1.1
 
