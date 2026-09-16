@@ -55,6 +55,30 @@ actor ModelPrices {
         "deepseek", "google", "xiaomi", "alibaba", "mistral", "meta",
     ]
 
+    /// The plan vendors an agent can be priced against when **no first-party
+    /// provider publishes the model at all**, keyed by the models.dev id.
+    ///
+    /// This is not a second guess at the same number, it is a different
+    /// question. `deepseek-v4.1-flash` is real, it is what OpenCode Go sells,
+    /// and DeepSeek's own provider entry does not list it — so the choice is
+    /// between the rate the plan the tokens were actually bought on publishes,
+    /// and no figure at all. Resellers stay out of the first-party list for
+    /// the reason written there; they belong here, where they are only ever
+    /// consulted for the agent whose plan they are.
+    ///
+    /// Stored **namespaced** (`vendor|id`) so a vendor's price can never be
+    /// found by a lookup that did not ask for that vendor, and so adding one
+    /// cannot collide with a first-party id.
+    private static let vendors = ["opencode-go", "kilo", "cline-pass"]
+
+    /// Separates a vendor from a model id in the table. Not a character any
+    /// models.dev id uses.
+    static let vendorSeparator: Character = "|"
+
+    static func vendorKey(_ vendor: String, _ model: String) -> String {
+        "\(vendor)\(vendorSeparator)\(model)"
+    }
+
     private static let source = URL(string: "https://models.dev/api.json")!
     private static let refreshAfter: TimeInterval = 24 * 3600
 
@@ -120,6 +144,29 @@ actor ModelPrices {
             }
         }
 
+        // The plan vendors, namespaced, and only for ids the first-party
+        // providers did not already price: a vendor re-listing somebody else's
+        // model must not shadow that model's own rate.
+        for vendor in vendors {
+            let models = (root[vendor] as? [String: Any])?["models"] as? [String: Any] ?? [:]
+            for (id, model) in models {
+                guard prices[id] == nil else { continue }
+                guard
+                    let cost = (model as? [String: Any])?["cost"] as? [String: Any],
+                    let input = number(cost["input"]),
+                    let output = number(cost["output"])
+                else { continue }
+
+                prices[vendorKey(vendor, id)] = ModelPrice(
+                    input: input,
+                    output: output,
+                    cacheRead: number(cost["cache_read"]),
+                    cacheWrite: number(cost["cache_write"]),
+                    name: (model as? [String: Any])?["name"] as? String
+                )
+            }
+        }
+
         return prices.isEmpty ? nil : prices
     }
 
@@ -137,7 +184,26 @@ actor ModelPrices {
     /// model priced at another model's rate — a wrong number that looks right.
     /// A lookup that still misses is left unpriced, which is what the footnote
     /// on the page counts.
-    static func price(for model: String, in table: [String: ModelPrice]) -> ModelPrice? {
+    static func price(
+        for model: String,
+        in table: [String: ModelPrice],
+        vendor: String? = nil
+    ) -> ModelPrice? {
+        if let price = firstParty(model, table) { return price }
+
+        // Only now, and only for the vendor asked about: the plan the tokens
+        // were bought on is the last word, never the first.
+        guard let vendor else { return nil }
+        if let exact = table[vendorKey(vendor, model)] { return exact }
+        let lowered = vendorKey(vendor, model).lowercased()
+        if let match = table.first(where: { $0.key.lowercased() == lowered })?.value { return match }
+        for candidate in aliases(for: model) {
+            if let match = table[vendorKey(vendor, candidate)] { return match }
+        }
+        return nil
+    }
+
+    private static func firstParty(_ model: String, _ table: [String: ModelPrice]) -> ModelPrice? {
         if let exact = table[model] { return exact }
 
         // MiniMax writes `MiniMax-M3` and the agents that call it write

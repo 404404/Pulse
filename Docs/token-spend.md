@@ -6,13 +6,23 @@ Source: [`SpendAgent`](../Sources/Pulse/Usage/SpendAgent.swift), [`AgentLedgers`
 
 It counts the last **week** until the reader picks another span, and the pick is kept for the next visit and the next launch (`AppSettings.spendSpan`; `SpendSpan.default` is `.week`). A stored value the picker no longer offers falls back to the week.
 
+## Pricing a model its own maker does not publish
+
+`ModelPrices.providers` is twelve first-party vendors and stays that way: a reseller re-listing somebody else's model at a markup is not that model's price. But some models are **only** sold through a plan — `deepseek-v4.1-flash` is real, OpenCode Go sells it, and DeepSeek's own models.dev entry does not list it — so the choice was a figure at the rate the tokens were actually bought at, or no figure at all.
+
+`SpendAgent.priceVendor` names the models.dev vendor an agent's plan is sold by (`opencode-go`, `kilo`, `cline-pass`). Those vendors' rates are stored **namespaced** as `vendor|id`, which is what makes them unreachable except to a lookup that asked for that vendor, and what keeps them from colliding with a first-party id. `ModelPrices.price(for:in:vendor:)` tries first-party spellings and aliases first and only then the vendor; a first-party price always wins. An agent that calls the model vendors directly has no `priceVendor`, because its models already have a published rate and a plan price would be a second answer to a settled question.
+
+`VendorPriceTests` pins all four of those rules.
+
 ## Model details
 
 Every model row opens its token details, including when only one model is listed. Models beyond the initial eight remain reachable. Opening a model from the overview counts every agent that used it; opening one inside an agent keeps that agent as the scope. Back returns to the model list in that scope. The selected model is temporary navigation state; the shared span remains the reader's saved preference.
 
 The detail shows the model's token total and API cost estimate, input/output/cache split with amounts, daily and hourly token usage, contributions by agent with amounts, and a paged daily table with a sortable cost column. A model with nothing in a newly selected span stays open with an empty state so the reader can widen the span or go back. Opening a model and changing its span only summarize the ledgers already in memory; **Rescan** is the explicit reread.
 
-Abbreviated figures expose exact token counts on hover. A known zero is `0`; an unavailable daily breakdown or amount is `—`. Sorting a numeric column leaves unavailable values last in either direction and uses the date to resolve ties.
+Abbreviated text figures expose exact token counts through their system help tags. A known zero is `0`; an unavailable daily breakdown or amount is `—`. Sorting a numeric column leaves unavailable values last in either direction and uses the date to resolve ties.
+
+Daily and hourly charts use the same immediate `ChartHoverOverlay` as account history. Moving anywhere within the plot selects the nearest column, including short and zero-count bars: a guide identifies it and a compact label shows its date (with year) or hour plus an abbreviated token count. The count uses `TokenCount.short`, matching the rest of the pane: 万/亿 in Simplified Chinese, the corresponding units in the other East Asian languages, and K/M/B in English. The label fits beside the column and stays within the chart at either edge, without resizing the card or delaying for a system help tag. Leaving the chart, changing the data/span, or leaving the view clears it. Bars also expose their date/hour and exact count to VoiceOver; unavailable hourly detail remains unavailable rather than getting an invented series.
 
 `ModelSpendSummary` matches the list's exact grouping key (`ledger.modelNames[rawID] ?? rawID`), including multiple raw IDs with the same published name. It adds only local and imported counts within the selected calendar span, fills quiet days, and keeps unpriced models' tokens. Per-model token tallies and quarter-hour counts come from the shared reader's original buckets. A missing or incomplete split is unavailable, never an agent-wide split borrowed for the model; hourly counts must reconcile separately for each agent, calendar day and raw model ID. The daily, agent and headline totals describe the same model and span.
 
@@ -44,6 +54,8 @@ The pane reads **53 sources**. Seven — Claude Code, Codex, OpenCode, Kilo CLI,
 That evidence distinction is the admission rule. A second-hand format spec pins a shape against change; it is not proof the shape is right, and a guessed transcript format fails silently — it does not throw, it produces a wrong number nobody can see is wrong. The added readers are held to the same discipline the machine-read ones are: a store that reports no tokens contributes no record (never a zero), a store that only estimates is not shown as usage, and a source that needs an export says so instead of pretending to read the product.
 
 The pane therefore never describes 53 agents as if each yields tokens on a fresh install. Most need their product installed and used, and the six export/cache clients (`cursor`, `antigravity`, `trae`, `warp`, `hindsight`, `mcode`) need a prior export or capture — or a file in Pulse's own `UsageImports/<client>` folder — before there is anything to read.
+
+Sources detected locally but yielding no counted tokens appear under **No usage data read** (「未读取到用量」). This uses the full scanned history, not the selected span; it describes what Pulse read, not proof that the source has never been used.
 
 ### How the work is read
 

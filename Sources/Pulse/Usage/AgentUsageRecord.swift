@@ -97,6 +97,9 @@ enum AgentUsageLedger {
         _ records: [AgentUsageRecord],
         prices: [String: ModelPrice],
         namespace: String,
+        /// The plan vendor to fall back to for a model no first-party provider
+        /// publishes. See `SpendAgent.priceVendor`.
+        vendor: String? = nil,
         calendar: Calendar = .current,
         origin: UsageLedger.Origin = .localTranscripts
     ) -> UsageLedger {
@@ -180,7 +183,7 @@ enum AgentUsageLedger {
             guard let sessionID = Self.nonBlank(record.sessionID) else { continue }
 
             let money = known > 0
-                ? (ModelPrices.price(for: model, in: prices).map { record.tally.cost(at: $0) } ?? 0)
+                ? (ModelPrices.price(for: model, in: prices, vendor: vendor).map { record.tally.cost(at: $0) } ?? 0)
                 : 0
             let name = Self.nonBlank(record.sessionName)
             let title = Self.nonBlank(record.title)
@@ -232,7 +235,7 @@ enum AgentUsageLedger {
         // tokens must never be listed as having "no published price".
         var unpriced = Set(ledger.unpricedModels)
         for model in acceptedModels {
-            if let price = ModelPrices.price(for: model, in: prices) {
+            if let price = ModelPrices.price(for: model, in: prices, vendor: vendor) {
                 if let name = price.name { ledger.modelNames[model] = name }
             } else {
                 unpriced.insert(model)

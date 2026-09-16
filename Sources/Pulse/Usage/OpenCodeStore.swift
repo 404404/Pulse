@@ -70,7 +70,7 @@ enum OpenCodeStore {
             )
             guard tally.total > 0 else { return }
 
-            let cost = ModelPrices.price(for: model, in: prices).map { tally.cost(at: $0) } ?? 0
+            let cost = ModelPrices.price(for: model, in: prices, vendor: SpendAgent.openCode.priceVendor).map { tally.cost(at: $0) } ?? 0
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 

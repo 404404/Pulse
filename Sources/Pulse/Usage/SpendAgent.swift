@@ -281,6 +281,21 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The models.dev vendor whose published rates this agent's plan is sold
+    /// at, consulted **only** when no first-party provider prices the model.
+    ///
+    /// Nil for an agent that calls the model vendors directly — its models are
+    /// already in the first-party list, and a plan price there would be a
+    /// second answer to a question that already has one.
+    var priceVendor: String? {
+        switch self {
+        case .openCode, .openCodeReview: "opencode-go"
+        case .kiloCLI, .kiloCode: "kilo"
+        case .cline: "cline-pass"
+        default: nil
+        }
+    }
+
     /// The SVG in `Resources` this agent is drawn with, or nil where nothing
     /// in the icon set stands for it.
     ///

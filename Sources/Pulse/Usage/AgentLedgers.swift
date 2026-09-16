@@ -192,6 +192,7 @@ actor AgentLedgers {
                 records,
                 prices: prices,
                 namespace: agent.rawValue,
+                vendor: agent.priceVendor,
                 // An export or capture is the account's movement, not
                 // necessarily this Mac's own transcript; it can still be
                 // priced, but it is not claimed as a local transcript.
