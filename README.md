@@ -60,9 +60,27 @@ Pulse is an unobtrusive floating monitor that docks neatly along the edge of you
 - **Privacy First**: No Pulse servers, no Pulse account, and no telemetry. Requests go to the providers you already use (and follow macOS system proxy settings).
 
 <p align="center">
-  <img src="Docs/panel.png" height="300" alt="Detailed usage card beside rail">
+  <img src="Docs/panel.webp" height="300" alt="Detailed usage card beside rail">
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="Docs/settings.png" height="300" alt="Pulse Settings">
+  <img src="Docs/settings.webp" height="300" alt="Pulse Settings">
+</p>
+
+<p align="center">
+  <img src="Docs/account-claude-code.webp" height="290" alt="An account pane: every reported limit, the estimated value of what was used, and the local history">
+  &nbsp;&nbsp;
+  <img src="Docs/account-codex.webp" height="290" alt="Another account pane, with the plan, credit balance and limit reset credits it reports">
+</p>
+
+<p align="center">
+  <img src="Docs/spend.webp" height="290" alt="Token spend: total, tokens by kind, and the daily pattern">
+  &nbsp;&nbsp;
+  <img src="Docs/spend-history.webp" height="290" alt="Token spend day by day, by month and by agent">
+</p>
+
+<p align="center">
+  <img src="Docs/spend-agent.webp" height="290" alt="One agent's spending on its own">
+  &nbsp;&nbsp;
+  <img src="Docs/spend-model.webp" height="290" alt="One model's spending, priced by token kind">
 </p>
 
 ---

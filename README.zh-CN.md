@@ -60,9 +60,27 @@ Pulse 是一个停靠在屏幕边缘的小巧悬浮监视器。它展示各服�
 - **本地优先**：无 Pulse 服务器、无 Pulse 账号、无遥测。请求发往你已在使用的服务商（并遵循 macOS 系统代理设置）。
 
 <p align="center">
-  <img src="Docs/panel.png" height="300" alt="详情卡片">
+  <img src="Docs/panel.webp" height="300" alt="详情卡片">
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="Docs/settings.png" height="300" alt="Pulse 设置界面">
+  <img src="Docs/settings.webp" height="300" alt="Pulse 设置界面">
+</p>
+
+<p align="center">
+  <img src="Docs/account-claude-code.webp" height="290" alt="账户页：每条上报的限额、已用额度的估算价值与本地历史">
+  &nbsp;&nbsp;
+  <img src="Docs/account-codex.webp" height="290" alt="另一个账户页：套餐、信用余额与限额重置次数">
+</p>
+
+<p align="center">
+  <img src="Docs/spend.webp" height="290" alt="Token 消费：合计、按类型的用量与每日规律">
+  &nbsp;&nbsp;
+  <img src="Docs/spend-history.webp" height="290" alt="按天、按月、按 agent 的 Token 消费">
+</p>
+
+<p align="center">
+  <img src="Docs/spend-agent.webp" height="290" alt="单个 agent 的消费明细">
+  &nbsp;&nbsp;
+  <img src="Docs/spend-model.webp" height="290" alt="单个模型的消费，按 token 类型计价">
 </p>
 
 ---
