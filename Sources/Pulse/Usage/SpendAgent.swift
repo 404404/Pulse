@@ -281,6 +281,55 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The SVG in `Resources` this agent is drawn with, or nil where nothing
+    /// in the icon set stands for it.
+    ///
+    /// **Separate from `iconProvider`, and the split is the point.** A
+    /// provider is something Pulse can put a ring and a settings pane behind;
+    /// most of this catalogue is a client, not a provider, and must be able to
+    /// carry a mark without being promoted to one to get it. Where an agent
+    /// *is* a provider Pulse already draws, it reuses that exact file rather
+    /// than shipping a second copy.
+    ///
+    /// **Nil is a real answer.** The icon set has no mark for a good number of
+    /// these clients, and a borrowed or approximated one would say the wrong
+    /// company made the tool. Those rows draw no mark at all.
+    var iconResource: String? {
+        if let iconProvider { return iconProvider.iconResource }
+
+        return switch self {
+        case .kiloCLI, .kiloCode: "kilocode"
+        case .pi: "pi"
+        case .gemini: "gemini"
+        case .qwen: "qwen"
+        case .amp: "amp"
+        case .cline: "cline"
+        // CodeBuddy and WorkBuddy are both Tencent's.
+        case .codeBuddy, .workBuddy: "tencent"
+        case .cherryStudio: "cherrystudio"
+        case .hermes: "hermesagent"
+        case .goose: "goose"
+        case .kiro: "kiro"
+        case .unsloth: "unsloth"
+        case .micode: "xiaomimimo"
+        case .junie: "junie"
+        case .dsh: "deepseek"
+        case .lmStudio: "lmstudio"
+        case .trae: "trae"
+        case .rooCode: "roocode"
+        case .mcode: "minimax"
+        case .openCodeReview: "opencode"
+        case .openClaw: "openclaw"
+        // No mark in the set: Oh My Pi, OmO Native, Kimchi, Prime Agent,
+        // Droid, Crush, Zed, Warp, Hindsight, Mux, Codebuff, Freebuff, JCode,
+        // Augment, Gajae Code, FX, Reasonix, ZCode. Checked name by name
+        // against the whole set, not by a pattern — the first pass missed
+        // OpenClaw, which was there all along. Left blank rather than
+        // approximated: `zenmux` is not Mux.
+        default: nil
+        }
+    }
+
     /// Whether its history comes from `UsageLedgerReader`, which already reads
     /// these two for the per-provider card.
     ///

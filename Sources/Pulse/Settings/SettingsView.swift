@@ -710,7 +710,7 @@ struct SettingsView: View {
                         // the arrow did nothing; saying so is kinder than
                         // hiding the row and renumbering everything.
                         subtitle: settings.isEnabled(account) ? nil : String.localized("Not shown"),
-                        icon: account.provider
+                        icon: account.provider.iconResource
                     ) {
                         HStack(spacing: 4) {
                             Button {

@@ -180,7 +180,7 @@ struct ModelSpendDetailView: View {
                 SettingsRow(
                     row.agent.displayName,
                     subtitle: String.localized("\(TokenCount.short(row.tokens)) tokens"),
-                    icon: row.agent.iconProvider
+                    icon: row.agent.iconResource
                 ) {
                     HStack(spacing: 10) {
                         ShareBar(share: model.tokens > 0

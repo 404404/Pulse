@@ -301,3 +301,51 @@ struct SpendAgentCatalogTests {
         }
     }
 }
+
+/// Every agent's mark resolves to a file that ships, and nothing is approximated.
+@Suite("Agent icons")
+@MainActor
+struct AgentIconTests {
+    /// Through the production loader, not `Bundle.module`: a test's own
+    /// `Bundle.module` is the **test target's** bundle and carries none of
+    /// these, so asking it answers nil for every mark including the ones that
+    /// have shipped since the first release. This also proves the file loads
+    /// as an image rather than merely existing.
+    @Test("Every named icon loads")
+    func resourcesExist() {
+        for agent in SpendAgent.allCases {
+            guard let resource = agent.iconResource else { continue }
+            #expect(
+                LobeIconStore.image(named: resource) != nil,
+                "\(agent.rawValue) names \(resource).svg, which does not load"
+            )
+        }
+    }
+
+    /// An agent that is a provider Pulse already draws must reuse that exact
+    /// file rather than a second copy that could drift from it.
+    @Test("A provider-backed agent reuses the provider's own file")
+    func borrowsRatherThanCopies() {
+        for agent in SpendAgent.allCases {
+            guard let provider = agent.iconProvider else { continue }
+            #expect(agent.iconResource == provider.iconResource, "\(agent.rawValue)")
+        }
+    }
+
+    /// Not a count to keep updated for its own sake: it is the line between
+    /// "has a mark" and "has none", and a mark appearing for a client the icon
+    /// set has nothing for would mean one was approximated.
+    @Test("The clients with no mark in the set stay blank")
+    func blanksStayBlank() {
+        let blank: Set<SpendAgent> = [
+            .omp, .senpi, .kimchi, .primeAgent, .droid,
+            .crush, .zed, .warp, .hindsight, .mux, .codebuff, .freebuff,
+            .jcode, .augment, .gjc, .fx, .reasonix, .zcode,
+        ]
+        // **Equality, not one-way.** The first version only asserted that the
+        // listed agents were blank, so an icon that was declared but landed in
+        // the wrong switch left its agent blank and the suite still passed —
+        // which is exactly how OpenClaw shipped without the mark it had.
+        #expect(Set(SpendAgent.allCases.filter { $0.iconResource == nil }) == blank)
+    }
+}

@@ -198,7 +198,7 @@ struct TokenSpendView: View {
                     .font(.system(size: 12))
                 Text(verbatim: "·")
                     .foregroundStyle(.secondary)
-                if let icon = agent.iconProvider { LobeIconView(provider: icon, size: 13) }
+                if let icon = agent.iconResource { LobeIconView(resource: icon, size: 13) }
                 Text(agent.displayName)
                     .font(.system(size: 12, weight: .medium))
             }
@@ -646,7 +646,7 @@ struct TokenSpendView: View {
                     SettingsRow(
                         agent.agent.displayName,
                         subtitle: String.localized("\(TokenCount.short(agent.tokens)) tokens"),
-                        icon: agent.agent.iconProvider
+                        icon: agent.agent.iconResource
                     ) {
                         HStack(spacing: 10) {
                             ShareBar(share: summary.tokens > 0
@@ -806,7 +806,7 @@ struct TokenSpendView: View {
                         // at least what the session is called.
                         row.session.title ?? row.session.project ?? row.session.name,
                         subtitle: Self.sessionSubtitle(row),
-                        icon: row.agent.iconProvider
+                        icon: row.agent.iconResource
                     ) {
                         HStack(spacing: 10) {
                             Text(String.localized("\(TokenCount.short(row.session.tokens)) tokens"))
