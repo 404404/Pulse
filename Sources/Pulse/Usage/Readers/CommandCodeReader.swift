@@ -4,9 +4,10 @@ import Foundation
 ///
 /// One JSONL per session under `projects/<slug>/`. The modern format is a
 /// **tree**: every entry names a `parentId`, and `/rewind` moves the leaf while
-/// the abandoned replies keep their usage on disk. Only the entries on the
-/// branch ending at the last entry are real work; the orphans are skipped so a
-/// rewind is not billed twice.
+/// the abandoned replies keep their usage on disk. Replies on every branch
+/// carry real work: rewinding context does not refund tokens already
+/// consumed. Message identities fold replays; ancestry only resolves the model
+/// a reply used, so a model change on another branch cannot reprice it.
 ///
 /// The modern `usage` object names all four buckets and is cache-exclusive.
 /// The legacy flat format has no tree and may carry no usage at all; where it
@@ -63,18 +64,17 @@ enum CommandCodeReader {
             )
         }
 
-        let branch = activeBranch(of: entries)
+        let hasTree = entries.contains { $0.parent != nil }
+        var byID: [String: Entry] = [:]
+        for entry in entries {
+            if let id = entry.id { byID[id] = entry }
+        }
+        var inheritedModels: [String: String] = [:]
 
         var records: [AgentUsageRecord] = []
         var currentModel: String?
 
         for entry in entries {
-            // No tree at all (legacy flat lines, or a file with no ids) means
-            // every line is on the active branch.
-            let onBranch = branch.isEmpty
-                || (entry.id.map { branch.contains($0) } ?? false)
-            guard onBranch else { continue }
-
             if entry.type == "model_change" {
                 if let model = EditorLog.modelID(AgentLogIO.text(entry.row["model"])) {
                     currentModel = model
@@ -102,17 +102,16 @@ enum CommandCodeReader {
 
             guard
                 let model = EditorLog.modelID(AgentLogIO.text(entry.row["model"]))
-                    ?? currentModel
+                    ?? (hasTree ? ancestorModel(of: entry, entries: byID, cache: &inheritedModels) : currentModel)
                     ?? configModel
             else { continue }
 
             let session = headerSession
                 ?? EditorLog.nonBlank(AgentLogIO.text(entry.row["sessionId"]))
                 ?? stem
-            // The header's id is the session identity; a message's own id and
-            // timestamp identify the message, so a replay into another file
-            // collapses.
-            let identity = entry.id.map { "commandcode:\(session):\($0):\(timestamp.timeIntervalSince1970)" }
+            // An explicit message id names the call even if an export changes
+            // its timestamp. The builder folds replays across files once.
+            let identity = entry.id.map { "commandcode:\(session):\($0)" }
                 ?? "commandcode:\(session):line\(entry.index):\(timestamp.timeIntervalSince1970)"
 
             records.append(
@@ -128,26 +127,30 @@ enum CommandCodeReader {
         return records
     }
 
-    /// The ids reachable from the last entry by following `parentId` back.
-    ///
-    /// Empty when there is no tree to follow, which is how the legacy flat
-    /// format keeps every line.
-    private static func activeBranch(of entries: [Entry]) -> Set<String> {
-        guard let last = entries.last(where: { $0.id != nil })?.id else { return [] }
-
-        var parents: [String: String] = [:]
-        for entry in entries {
-            if let id = entry.id, let parent = entry.parent {
-                parents[id] = parent
+    /// The nearest stated model on this reply's own ancestry, not the last
+    /// model change in file order. Memoized so long branches stay linear;
+    /// missing parents and cycles stop without borrowing a sibling's model.
+    private static func ancestorModel(
+        of entry: Entry,
+        entries: [String: Entry],
+        cache: inout [String: String]
+    ) -> String? {
+        var visited: Set<String> = []
+        var cursor = entry.parent
+        var model: String?
+        while let id = cursor, visited.insert(id).inserted {
+            if let cached = cache[id] { model = cached; break }
+            guard let ancestor = entries[id] else { break }
+            if let stated = EditorLog.modelID(AgentLogIO.text(ancestor.row["model"])) {
+                model = stated
+                break
             }
+            cursor = ancestor.parent
         }
-
-        var branch: Set<String> = []
-        var cursor: String? = last
-        while let id = cursor, branch.insert(id).inserted {
-            cursor = parents[id]
+        if let model {
+            for id in visited { cache[id] = model }
         }
-        return branch
+        return model
     }
 
     private static func configModel(in roots: [URL]) -> String? {

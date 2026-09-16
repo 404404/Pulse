@@ -180,6 +180,37 @@ struct CapturedUsageReadersTests {
         #expect(record.deduplicationID == nil)
     }
 
+    @Test("A cross-day cloud CSV session stays inside Today, including after a cache reload")
+    func cursorSessionCalendarDays() throws {
+        let root = try Self.temporary("cursor-calendar-days")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let csv = """
+        Date,Model,Input (w/o Cache Write),Input (w/ Cache Write),Cache Read,Output Tokens,Cloud Agent ID
+        2026-09-15T12:00:00Z,gpt-5.4,1000000,0,0,0,cloud-1
+        2026-09-16T12:00:00Z,gpt-5.4,100000,0,0,0,cloud-1
+        """
+        try Self.write(csv, to: root.appending(path: "usage.csv"))
+        let records = CapturedUsageReaders.records(client: "cursor", roots: [root])
+        let original = Self.importedLedger(records, namespace: "cursor")
+        let cache = root.appending(path: "ledger.json")
+        AgentCache.save(original, stamp: .init(source: "fixture", prices: "fixture"), for: .cursor, at: cache)
+        let reloaded = try #require(AgentCache.load(.cursor, at: cache)).ledger
+        #expect(reloaded == original)
+        let now = try #require(records.map(\.timestamp).max())
+        for ledger in [original, reloaded] {
+            #expect(ledger.slots.isEmpty)
+            #expect(ledger.sessions.first?.slots.isEmpty == true)
+            #expect(ledger.sessions.first?.days.count == 2)
+            let today = SpendSummary.of([.cursor: ledger], overLast: 1, now: now, calendar: Self.calendar)
+            #expect(today.tokens == 100_000)
+            #expect(today.sessions.first?.session.tokens == 100_000)
+            #expect(abs((today.sessions.first?.session.cost ?? -1) - 0.1) < 1e-12)
+            #expect(today.hours.isEmpty)
+            let week = SpendSummary.of([.cursor: ledger], overLast: 7, now: now, calendar: Self.calendar)
+            #expect(week.sessions.first?.session.tokens == 1_100_000)
+        }
+    }
+
     @Test("Cursor accepts a schema-valid import under any name and ignores an unrelated file")
     func cursorImportNames() throws {
         let root = try Self.temporary("cursor-import")

@@ -38,35 +38,7 @@ enum DevinCLIStore {
         var perSession: [String: (tokens: Int, cost: Double, start: Date, end: Date)] = [:]
         var sessionSlots: [String: [String: (tokens: Int, cost: Double)]] = [:]
 
-        Self.each(handle, "SELECT session_id, chat_message, created_at FROM message_nodes") { statement in
-            guard
-                let sessionText = sqlite3_column_text(statement, 0),
-                let messageText = sqlite3_column_text(statement, 1)
-            else { return }
-
-            let session = String(cString: sessionText)
-            let json = Data(String(cString: messageText).utf8)
-            guard
-                let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-                let metadata = root["metadata"] as? [String: Any],
-                let metrics = metadata["metrics"] as? [String: Any]
-            else { return }
-
-            let tally = TokenTally(
-                input: int(metrics["input_tokens"]),
-                cacheWrite: int(metrics["cache_creation_tokens"]),
-                cacheRead: int(metrics["cache_read_tokens"]),
-                output: int(metrics["output_tokens"])
-            )
-            guard tally.total > 0 else { return }
-
-            // The row's own column is the reliable one; the message's
-            // `created_at` is there for the rows that have it.
-            let seconds = Double(sqlite3_column_int64(statement, 2))
-            let at = Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
-            guard at.timeIntervalSince1970 > 0 else { return }
-
-            let model = metadata["generation_model"] as? String ?? "devin"
+        Self.eachUsage(handle) { session, model, at, tally in
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
@@ -108,6 +80,42 @@ enum DevinCLIStore {
         .sorted { $0.end > $1.end }
 
         return ledger
+    }
+
+    /// Only sessions this reader can actually count suppress their Desktop
+    /// mirror. A metadata row, an empty metrics object or an undated message
+    /// is not usage. Share the exact parser so the two routes cannot disagree.
+    static func countedSessionIDs(in database: OpaquePointer?) -> Set<String> {
+        var ids: Set<String> = []
+        eachUsage(database) { session, _, _, _ in ids.insert(session) }
+        return ids
+    }
+
+    private static func eachUsage(
+        _ database: OpaquePointer?,
+        _ consume: (String, String, Date, TokenTally) -> Void
+    ) {
+        each(database, "SELECT session_id, chat_message, created_at FROM message_nodes") { statement in
+            guard
+                let sessionText = sqlite3_column_text(statement, 0),
+                let messageText = sqlite3_column_text(statement, 1),
+                let root = try? JSONSerialization.jsonObject(with: Data(String(cString: messageText).utf8)) as? [String: Any],
+                let metadata = root["metadata"] as? [String: Any],
+                let metrics = metadata["metrics"] as? [String: Any]
+            else { return }
+
+            let tally = TokenTally(
+                input: int(metrics["input_tokens"]),
+                cacheWrite: int(metrics["cache_creation_tokens"]),
+                cacheRead: int(metrics["cache_read_tokens"]),
+                output: int(metrics["output_tokens"])
+            )
+            guard tally.total > 0 else { return }
+            let seconds = Double(sqlite3_column_int64(statement, 2))
+            let at = Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
+            guard at.timeIntervalSince1970 > 0 else { return }
+            consume(String(cString: sessionText), metadata["generation_model"] as? String ?? "devin", at, tally)
+        }
     }
 
     private static func each(

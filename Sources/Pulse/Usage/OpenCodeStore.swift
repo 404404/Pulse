@@ -27,7 +27,7 @@ import SQLite3
 /// **Reasoning tokens are counted as output**, which is where every price list
 /// bills them and where the two CLIs' own counts already put them.
 enum OpenCodeStore {
-    static func ledger(at file: URL, prices: [String: ModelPrice]) -> UsageLedger {
+    static func ledger(at file: URL, prices: [String: ModelPrice], vendor: String? = nil) -> UsageLedger {
         var handle: OpaquePointer?
         guard sqlite3_open_v2(file.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
             sqlite3_close(handle)
@@ -70,7 +70,7 @@ enum OpenCodeStore {
             )
             guard tally.total > 0 else { return }
 
-            let cost = ModelPrices.price(for: model, in: prices, vendor: SpendAgent.openCode.priceVendor).map { tally.cost(at: $0) } ?? 0
+            let cost = ModelPrices.price(for: model, in: prices, vendor: vendor).map { tally.cost(at: $0) } ?? 0
             let key = UsageLedgerReader.slotKey(for: at)
             buckets[key, default: [:]][model] = (buckets[key]?[model] ?? TokenTally()) + tally
 
@@ -92,7 +92,7 @@ enum OpenCodeStore {
 
         guard !buckets.isEmpty else { return .empty }
 
-        var ledger = UsageLedgerReader.price(buckets, with: prices, calendar: calendar)
+        var ledger = UsageLedgerReader.price(buckets, with: prices, calendar: calendar, vendor: vendor)
         ledger.sessions = perSession
             .compactMap { id, totals in
                 let session = sessions[id]

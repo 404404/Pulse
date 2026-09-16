@@ -205,6 +205,14 @@ struct UsageLedger: Sendable, Equatable {
 
     /// One transcript: one conversation with the CLI.
     struct Session: Identifiable, Sendable, Equatable {
+        /// A reported calendar day's work, independent of whether its hour is
+        /// known. Used for span filtering, never as an hourly measurement.
+        struct Day: Sendable, Equatable {
+            let date: Date
+            let tokens: Int
+            let cost: Double
+        }
+
         /// The file's path, which is unique and stable.
         let id: String
         /// What the CLI called it — a uuid for Claude Code, a timestamped
@@ -231,9 +239,12 @@ struct UsageLedger: Sendable, Equatable {
         /// resumed across midnight, or over days, has work on more than one
         /// calendar day; without this detail a span can only take it whole or
         /// drop it, and a project's total then disagrees with the span's own.
-        /// Empty for a ledger read before sessions kept their buckets, where
-        /// the readers fall back to counting the session whole.
+        /// Empty when timing is aggregate, or on an older ledger. Calendar
+        /// days below are the fallback; only a session with neither is counted whole.
         var slots: [Slot] = []
+        /// Present for normalized records, including aggregate reports. A
+        /// session may have exact days while having no trustworthy hours.
+        var days: [Day] = []
     }
 
     static let empty = UsageLedger(
@@ -364,9 +375,10 @@ actor UsageLedgerReader {
     nonisolated static func price(
         _ buckets: [String: [String: TokenTally]],
         with prices: [String: ModelPrice],
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        vendor: String? = nil
     ) -> UsageLedger {
-        priced(buckets, with: prices, calendar: calendar)
+        priced(buckets, with: prices, calendar: calendar, vendor: vendor)
     }
 
     /// Turns buckets into days, slots and money.
@@ -378,7 +390,8 @@ actor UsageLedgerReader {
     nonisolated private static func priced(
         _ buckets: Buckets,
         with prices: [String: ModelPrice],
-        calendar: Calendar
+        calendar: Calendar,
+        vendor: String? = nil
     ) -> UsageLedger {
         guard !buckets.isEmpty else { return .empty }
 
@@ -413,7 +426,7 @@ actor UsageLedgerReader {
                     (dayModelTallies[day]?[model] ?? TokenTally()) + tally
                 dayTally[day, default: TokenTally()] = (dayTally[day] ?? TokenTally()) + tally
 
-                if let price = ModelPrices.price(for: model, in: prices) {
+                if let price = ModelPrices.price(for: model, in: prices, vendor: vendor) {
                     let money = tally.costBreakdown(at: price)
                     cost += money.total
                     dayModelCosts[day, default: [:]][model, default: TokenCost()] =

@@ -100,7 +100,7 @@ actor ModelPrices {
             }
             // Offline: an old copy beats no prices at all, since list prices
             // barely move.
-            return Self.readCache()?.prices ?? [:]
+            return Self.readCache(allowPreviousVersion: true)?.prices ?? [:]
         }
         inFlight = task
 
@@ -274,29 +274,32 @@ actor ModelPrices {
 
     // MARK: - Cache
 
-    private struct Cache: Codable {
+    // Internal for isolated upgrade-cache tests; no test reads the user's table.
+    struct Cache: Codable {
         let fetchedAt: Date
         let prices: [String: ModelPrice]
 
         var age: TimeInterval { Date().timeIntervalSince(fetchedAt) }
     }
 
-    /// The `2` is the stored shape. Model names were added to it, and a file
-    /// written before that decodes fine with every name missing — a cache
-    /// that is quietly a little bit wrong is worse than one that misses.
+    /// Version 4 includes namespaced plan-vendor rates. A version 3 table can
+    /// be fresh but cannot satisfy the new lookup, so it is only an offline
+    /// fallback and never suppresses a download on upgrade.
     private static var cacheFile: URL {
-        // **The number is the stored shape and the table's own reach.** It went
-        // to `3` when the provider list grew from two vendors to twelve: a
-        // cached `2` still decodes perfectly and holds only Anthropic's and
-        // OpenAI's models, so every other vendor would stay unpriced for a day
-        // — and then for another day, because the cache is rewritten on the
-        // same schedule whatever is in it.
-        PulseStorage.directory.appending(path: "model-prices-3.json")
+        PulseStorage.directory.appending(path: "model-prices-4.json")
     }
 
-    private static func readCache() -> Cache? {
-        guard let data = try? Data(contentsOf: cacheFile) else { return nil }
-        return try? JSONDecoder().decode(Cache.self, from: data)
+    static func readCache(
+        in directory: URL = PulseStorage.directory,
+        allowPreviousVersion: Bool = false
+    ) -> Cache? {
+        let names = [cacheFile.lastPathComponent] + (allowPreviousVersion ? ["model-prices-3.json"] : [])
+        for name in names {
+            guard let data = try? Data(contentsOf: directory.appending(path: name)),
+                  let cached = try? JSONDecoder().decode(Cache.self, from: data) else { continue }
+            return cached
+        }
+        return nil
     }
 
     private static func writeCache(_ prices: [String: ModelPrice]) {

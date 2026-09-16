@@ -498,7 +498,7 @@ struct AgentUsageRecordTests {
 
     // MARK: - Aggregate timing
 
-    @Test("An aggregate record lands on its day but never in an hour or session bucket")
+    @Test("An aggregate record keeps its day, including in its session, but no hour bucket")
     func aggregateTimingHasNoHours() throws {
         let ledger = AgentUsageLedger.build(
             [Self.record("priced", TokenTally(input: 100), at: Self.at(daysAgo: 0, hour: 9),
@@ -517,9 +517,9 @@ struct AgentUsageRecordTests {
 
         let session = try #require(ledger.sessions.first)
         #expect(session.tokens == 500)
-        // The session keeps no buckets at all, so the coarse fallback applies
-        // rather than a partial series that drops the undated work.
+        // Known calendar dates survive without inventing an hour series.
         #expect(session.slots.isEmpty)
+        #expect(session.days == [.init(date: day.date, tokens: 500, cost: session.cost)])
         #expect(abs(session.cost - 0.1) < 1e-12)
 
         let combined = SpendSummary.of(
@@ -538,6 +538,30 @@ struct AgentUsageRecordTests {
         #expect(abs((model.cost ?? -1) - 0.1) < 1e-12)
         #expect(model.unpricedTokens == 400)
         #expect(model.tally == nil)
+    }
+
+    @Test("Aggregate and mixed-timing sessions window by their known days", arguments: [true, false])
+    func aggregateSessionWindows(onlyAggregate: Bool) throws {
+        let ledger = AgentUsageLedger.build(
+            [
+                Self.record("priced", TokenTally(input: 900), at: Self.at(daysAgo: 1, hour: 9),
+                            aggregate: true, session: "s", project: "Pulse"),
+                Self.record("priced", TokenTally(input: 100), at: Self.at(daysAgo: 0, hour: 9),
+                            unclassified: 50, aggregate: onlyAggregate, session: "s", project: "Pulse"),
+            ],
+            prices: Self.prices, namespace: "a", calendar: Self.calendar
+        )
+        #expect(ledger.sessions.first?.slots.isEmpty == true)
+        #expect(ledger.sessions.first?.days.count == 2)
+        let today = SpendSummary.of([.cursor: ledger], overLast: 1, now: Self.now, calendar: Self.calendar)
+        #expect(today.tokens == 150)
+        #expect(today.sessions.first?.session.tokens == today.tokens)
+        #expect(today.projects.first?.tokens == today.tokens)
+        #expect(today.sessions.first?.session.cost == today.cost)
+        #expect(today.projects.first?.cost == today.cost)
+        #expect(today.hasAggregateTiming)
+        let all = SpendSummary.of([.cursor: ledger], overLast: nil, now: Self.now, calendar: Self.calendar)
+        #expect(all.sessions.first?.session.tokens == 1050)
     }
 
     // MARK: - Partial counts

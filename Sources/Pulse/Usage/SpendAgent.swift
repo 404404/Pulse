@@ -437,7 +437,8 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
 
         // **Devin Desktop is the one client whose inputs include a store it
         // does not own.** It borrows the Devin CLI database to resolve a
-        // Desktop event file's session id, model and workspace by title, so
+        // Desktop event file's session id, model and workspace by title and
+        // exclude a mirror of usage the native route counts, so
         // that database is read and watched once Desktop is present — but its
         // existence alone is not evidence of Desktop. Without this gate a
         // machine with only the CLI would report a desktop agent with nothing

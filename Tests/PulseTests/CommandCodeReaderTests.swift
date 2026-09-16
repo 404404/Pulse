@@ -2,12 +2,12 @@ import Foundation
 import Testing
 @testable import Pulse
 
-/// The tree transcript: only the active branch is billed, and a legacy line
+/// The tree transcript: every measured call counts, including rewound replies, and a legacy line
 /// with no usage contributes nothing rather than an estimate.
 @Suite("CommandCode reader")
 struct CommandCodeReaderTests {
-    @Test("Rewind orphans are excluded and the model follows the last model_change")
-    func activeBranch() throws {
+    @Test("Rewound replies keep their usage and models follow their own ancestry")
+    func allBranches() throws {
         let home = try EditorTestSupport.temporary("commandcode")
         defer { try? FileManager.default.removeItem(at: home) }
         let file = home.appending(path: ".commandcode/projects/slug/session.jsonl")
@@ -36,7 +36,8 @@ struct CommandCodeReaderTests {
 
         let roots = EditorLogReaders.inputs(client: "commandcode", home: home)
         let records = EditorLogReaders.records(client: "commandcode", roots: roots)
-        #expect(records.count == 2)
+        #expect(records.count == 3)
+        #expect(records.contains { $0.tally.input == 999 })
 
         let first = try #require(records.first { $0.tally.input == 100 })
         #expect(first.model == "claude-sonnet")
@@ -44,9 +45,51 @@ struct CommandCodeReaderTests {
         #expect(first.tally == TokenTally(input: 100, cacheWrite: 20, cacheRead: 30, output: 40))
 
         let second = try #require(records.first { $0.tally.input == 5 })
-        // No model on the line: the last model_change on the branch supplies it.
+        // No model on the line: its own branch's model_change supplies it.
         #expect(second.model == "gpt-5")
         #expect(second.tally == TokenTally(input: 5, cacheRead: 1, output: 6))
+    }
+
+    @Test("Rewind adds consumption without inheriting a sibling model or counting a replay twice")
+    func rewindAndReplayProductionChain() throws {
+        let home = try EditorTestSupport.temporary("commandcode-rewind")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let directory = home.appending(path: ".commandcode/projects/slug")
+        let file = directory.appending(path: "session.jsonl")
+        let at = EditorTestSupport.at(hour: 9)
+        let stamp = EditorTestSupport.iso(at)
+        let original: [[String: Any]] = [
+            ["type": "session", "id": "s"],
+            ["type": "model_change", "id": "model", "model": "openai/alpha"],
+            ["type": "message", "id": "u1", "parentId": "model", "message": ["role": "user"]],
+            ["type": "message", "id": "a1", "parentId": "u1", "timestamp": stamp,
+             "message": ["role": "assistant"], "usage": ["inputTokens": 100]],
+        ]
+        let prices = [
+            "alpha": ModelPrice(input: 1_000_000, output: 0, cacheRead: nil, cacheWrite: nil, name: nil),
+            "beta": ModelPrice(input: 2_000_000, output: 0, cacheRead: nil, cacheWrite: nil, name: nil),
+        ]
+        try EditorTestSupport.jsonLines(original, to: file)
+        let before = AgentLedgers.read(.commandCode, prices: prices, home: home, environment: [:]).ledger
+        #expect(before.allTime.tokens == 100)
+
+        let continued = original + [
+            ["type": "model_change", "id": "beta", "parentId": "a1", "model": "openai/beta"],
+            ["type": "message", "id": "a2", "parentId": "beta", "timestamp": stamp,
+             "message": ["role": "assistant"], "usage": ["inputTokens": 5]],
+            // Rewind to u1: this reply uses alpha, not the later beta switch.
+            ["type": "message", "id": "a3", "parentId": "u1", "timestamp": stamp,
+             "message": ["role": "assistant"], "usage": ["inputTokens": 10]],
+        ]
+        try EditorTestSupport.jsonLines(continued, to: file)
+        try EditorTestSupport.jsonLines(continued, to: directory.appending(path: "replay.jsonl"))
+        let ledger = AgentLedgers.read(.commandCode, prices: prices, home: home, environment: [:]).ledger
+        let summary = SpendSummary.of([.commandCode: ledger], overLast: 1, now: at)
+        #expect(summary.tokens == 115)
+        #expect(summary.cost == 120)
+        #expect(summary.sessions.first?.session.tokens == 115)
+        #expect(summary.models.first { $0.name == "alpha" }?.tokens == 110)
+        #expect(summary.models.first { $0.name == "beta" }?.tokens == 5)
     }
 
     @Test("Legacy flat lines read their usage, take the config model, and never estimate")

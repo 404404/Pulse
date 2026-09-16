@@ -205,7 +205,9 @@ struct SpendSummary: Equatable, Sendable {
     /// same sum — never the whole conversation, and never a share of it
     /// worked out from a ratio.
     ///
-    /// A session with no buckets is one read before the ledger kept them:
+    /// Calendar-day buckets also preserve the span when a report has no exact
+    /// hour. They are used only when quarter-hour buckets are unavailable.
+    /// A session with neither kind of bucket is one read before the ledger kept them:
     /// it falls back to being counted whole when it ended inside the span,
     /// which is the old rule and never a silent zero.
     private static func window(
@@ -215,6 +217,11 @@ struct SpendSummary: Equatable, Sendable {
         guard let cutoff else { return (session.tokens, session.cost, session.end) }
 
         guard !session.slots.isEmpty else {
+            if !session.days.isEmpty {
+                let days = session.days.filter { $0.date >= cutoff }
+                guard let last = days.map(\.date).max() else { return nil }
+                return (days.reduce(0) { $0 + $1.tokens }, days.reduce(0.0) { $0 + $1.cost }, last)
+            }
             return session.end >= cutoff ? (session.tokens, session.cost, session.end) : nil
         }
 
@@ -329,7 +336,7 @@ struct SpendSummary: Equatable, Sendable {
                         session: UsageLedger.Session(
                             id: session.id, name: session.name, title: session.title,
                             project: session.project, start: session.start, end: session.end,
-                            tokens: windowed.tokens, cost: windowed.cost, slots: session.slots
+                            tokens: windowed.tokens, cost: windowed.cost, slots: session.slots, days: session.days
                         )
                     )
                 )

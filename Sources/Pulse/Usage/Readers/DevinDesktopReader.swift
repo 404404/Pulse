@@ -2,7 +2,7 @@ import Foundation
 
 /// Devin Desktop's ACP event captures, `*.ndjson` under the app's
 /// `User/acp-events` directory, with the CLI's session database read only as a
-/// **lookup**.
+/// **lookup** and, when its usage is counted separately, a source-precedence check.
 ///
 /// **Two shapes, told apart by evidence, not a version marker.** The canonical
 /// ACP `usage_update` carries its figures under `notification._meta`:
@@ -14,13 +14,15 @@ import Foundation
 /// an older or mislabelled event — falls back to a usage object under the
 /// metadata locations, and emits **one record per metric-bearing event**.
 ///
-/// **The CLI's database is a lookup, not a second source.** Its
+/// **The database supplies identity, not additional tokens on this route.** Its
 /// `sessions.title` maps to `{id, model, working_directory}` so a Desktop file
 /// whose name is an unrelated UUID recovers a stable session id, model and
 /// workspace. A title two database sessions share is ambiguous and is ignored.
 /// Most Desktop captures carry no usage at all; the CLI database is usually
 /// where the authoritative figures are, and this reader never invents the
 /// difference.
+/// When the catalogue counts that database's messages separately, a capture
+/// matched to one of its counted sessions is excluded as a mirror.
 ///
 /// `reasoning` is never reported here, so it stays zero. A missing timestamp
 /// is skipped rather than filled from the file's modification date, and
@@ -40,8 +42,13 @@ enum DevinDesktopReader {
         return roots
     }
 
-    static func records(roots: [URL]) -> [AgentUsageRecord] {
-        let lookup = sessions(roots)
+    /// When the spend catalogue also reads a database as Devin's native
+    /// ledger, that database owns its counted sessions. Captures for an
+    /// unambiguously matched session are a mirror, not another agent's work.
+    /// Other lookup databases are metadata only and cannot suppress a record.
+    static func records(roots: [URL], authoritativeDatabases: [URL] = []) -> [AgentUsageRecord] {
+        let authoritative = Set(authoritativeDatabases.map { $0.resolvingSymlinksInPath().path })
+        let lookup = sessions(roots, authoritative: authoritative)
         return AgentLogIO.files(in: roots, extensions: ["ndjson"]).flatMap {
             read($0, lookup: lookup)
         }
@@ -53,11 +60,12 @@ enum DevinDesktopReader {
         let id: String
         let model: String?
         let directory: String?
+        let hasCountedUsage: Bool
     }
 
     /// `sessions.title` to the sessions that carry it. A title held by more
     /// than one session is ambiguous and resolved to nil by throwing it away.
-    private static func sessions(_ roots: [URL]) -> [String: [Session]] {
+    private static func sessions(_ roots: [URL], authoritative: Set<String>) -> [String: [Session]] {
         var table: [String: [Session]] = [:]
         for file in AgentLogIO.files(in: roots, names: ["sessions.db"]) {
             _ = AgentSQLite.read(at: file) { database in
@@ -65,6 +73,8 @@ enum DevinDesktopReader {
                 guard columns.contains("id"), columns.contains("title") else { return }
                 let model = columns.contains("model") ? "model" : "NULL"
                 let directory = columns.contains("working_directory") ? "working_directory" : "NULL"
+                let counted = authoritative.contains(file.resolvingSymlinksInPath().path)
+                    ? DevinCLIStore.countedSessionIDs(in: database) : []
                 AgentSQLite.each(
                     database, sql: "SELECT id, title, \(model), \(directory) FROM sessions"
                 ) { statement in
@@ -76,7 +86,8 @@ enum DevinDesktopReader {
                         Session(
                             id: id,
                             model: AgentLogIO.text(AgentSQLite.text(statement, column: 2)),
-                            directory: AgentLogIO.text(AgentSQLite.text(statement, column: 3))
+                            directory: AgentLogIO.text(AgentSQLite.text(statement, column: 3)),
+                            hasCountedUsage: counted.contains(id)
                         )
                     )
                 }
@@ -132,6 +143,7 @@ enum DevinDesktopReader {
             let tally = TokenTally(input: fresh, cacheWrite: latestWrite, cacheRead: latestRead, output: summedOutput)
             if let timestamp, tally.total > 0 {
                 let resolved = resolve(title: title, lookup: lookup)
+                if resolved?.hasCountedUsage == true { return records }
                 records.append(
                     DatabaseReaderSupport.record(
                         at: timestamp,
@@ -229,6 +241,7 @@ enum DevinDesktopReader {
                 ?? (notification["_meta"] as? [String: Any])
                     .flatMap { AgentLogIO.text($0["cognition.ai/model"]) }
             let resolved = resolve(title: title, lookup: lookup)
+            if resolved?.hasCountedUsage == true { return nil }
 
             return DatabaseReaderSupport.record(
                 at: timestamp,

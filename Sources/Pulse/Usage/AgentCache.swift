@@ -10,6 +10,10 @@ import Foundation
 /// finished ledger — and its validity is settled by the store's real inputs
 /// and the price table, not by the store root's own size and date.
 enum AgentCache {
+    /// Also versions reader semantics: a valid old shape can contain totals
+    /// from the old pricing, source-precedence or rewind rules.
+    private static let version = 6
+
     /// Whether the stores' real inputs, and the money behind their cost, are
     /// the same as when the ledger was kept.
     ///
@@ -175,6 +179,7 @@ enum AgentCache {
     }
 
     struct Saved: Codable {
+        let version: Int
         let stamp: Stamp
         let ledger: StoredLedger
     }
@@ -254,6 +259,14 @@ enum AgentCache {
         /// project totals unable to respect the selected span. Missing it has to
         /// fail the decode so the store is read again.
         let slots: [StoredSlot]
+        /// Required: aggregate sessions must keep their known calendar dates.
+        let days: [StoredSessionDay]
+    }
+
+    struct StoredSessionDay: Codable {
+        let date: Date
+        let tokens: Int
+        let cost: Double
     }
 
     /// Reads the kept ledger back.
@@ -270,7 +283,8 @@ enum AgentCache {
     ) -> (stamp: Stamp, ledger: UsageLedger)? {
         guard
             let data = try? Data(contentsOf: url ?? file(for: agent)),
-            let saved = try? JSONDecoder().decode(Saved.self, from: data)
+            let saved = try? JSONDecoder().decode(Saved.self, from: data),
+            saved.version == version
         else { return nil }
 
         var ledger = UsageLedger(
@@ -299,6 +313,9 @@ enum AgentCache {
                 start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost,
                 slots: $0.slots.map {
                     .init(start: $0.start, tokens: $0.tokens, cost: $0.cost, models: $0.models)
+                },
+                days: $0.days.map {
+                    .init(date: $0.date, tokens: $0.tokens, cost: $0.cost)
                 }
             )
         }
@@ -334,6 +351,9 @@ enum AgentCache {
                     start: $0.start, end: $0.end, tokens: $0.tokens, cost: $0.cost,
                     slots: $0.slots.map {
                         StoredSlot(start: $0.start, tokens: $0.tokens, cost: $0.cost, models: $0.models)
+                    },
+                    days: $0.days.map {
+                        StoredSessionDay(date: $0.date, tokens: $0.tokens, cost: $0.cost)
                     }
                 )
             },
@@ -344,7 +364,7 @@ enum AgentCache {
             }
         )
 
-        guard let data = try? JSONEncoder().encode(Saved(stamp: stamp, ledger: stored)) else { return }
+        guard let data = try? JSONEncoder().encode(Saved(version: version, stamp: stamp, ledger: stored)) else { return }
         let destination = url ?? file(for: agent)
         if url == nil { PulseStorage.prepare() }
         try? data.write(to: destination, options: .atomic)
@@ -366,6 +386,8 @@ enum AgentCache {
         // flag, the partial-counts flag and each day's unclassified tokens: a
         // shape without them cannot say whether it may be priced, drawn per
         // hour, or trusted as a whole, so it must not decode.
-        PulseStorage.directory.appending(path: "agent-5-\(agent.rawValue).json")
+        // Version 6 adds session calendar days and invalidates the former
+        // vendor-pricing, Devin mirror and Command Code rewind totals.
+        PulseStorage.directory.appending(path: "agent-\(version)-\(agent.rawValue).json")
     }
 }

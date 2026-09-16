@@ -12,7 +12,8 @@ import Foundation
 /// other legacy agents keep their own store readers (`OpenCodeStore`,
 /// `GrokStore`, `KimiCLIStore`, `DevinCLIStore`). Everything added since is
 /// handed to `AgentRecordReaders` and built by `AgentUsageLedger.build`, so
-/// there is one pricing path for all of them.
+/// there is one pricing path for all of them. Devin Desktop additionally
+/// receives the native databases being counted, to exclude matched mirrors.
 ///
 /// **An agent can have more than one root.** Its inputs are resolved to the
 /// ones that exist, the cache stamp is taken over that whole set, and the set
@@ -153,12 +154,14 @@ actor AgentLedgers {
     }
 
     /// One agent's read: the ledger it produced, and any limit the reader met.
-    private struct ReadResult {
+    struct ReadResult {
         let ledger: UsageLedger
         let notes: [String]
     }
 
-    private static func read(
+    // Internal so fixture tests exercise the production dispatch, including
+    // which plan vendor each agent passes to its shared store reader.
+    static func read(
         _ agent: SpendAgent,
         prices: [String: ModelPrice],
         home: URL,
@@ -171,7 +174,9 @@ actor AgentLedgers {
         // and no reader-level limits to report.
         case .openCode, .kiloCLI:
             guard let store = stores.first else { return ReadResult(ledger: .empty, notes: []) }
-            return ReadResult(ledger: OpenCodeStore.ledger(at: store, prices: prices), notes: [])
+            return ReadResult(
+                ledger: OpenCodeStore.ledger(at: store, prices: prices, vendor: agent.priceVendor), notes: []
+            )
         case .grok:
             guard let store = stores.first else { return ReadResult(ledger: .empty, notes: []) }
             return ReadResult(ledger: GrokStore.ledger(at: store, prices: prices), notes: [])
@@ -181,6 +186,14 @@ actor AgentLedgers {
         case .devinCLI:
             guard let store = stores.first else { return ReadResult(ledger: .empty, notes: []) }
             return ReadResult(ledger: DevinCLIStore.ledger(at: store, prices: prices), notes: [])
+        case .devinDesktop:
+            let records = DevinDesktopReader.records(
+                roots: stores,
+                authoritativeDatabases: SpendAgent.devinCLI.stores(home: home, environment: environment)
+            )
+            return ReadResult(
+                ledger: AgentUsageLedger.build(records, prices: prices, namespace: agent.rawValue), notes: []
+            )
         // Read by `UsageLedgerReader`, and never routed here.
         case .claudeCode, .codex:
             return ReadResult(ledger: .empty, notes: [])

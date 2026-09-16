@@ -47,8 +47,8 @@ struct AgentUsageRecord: Sendable {
     /// True when only session- or report-level timing is known.
     ///
     /// An aggregate record cannot be placed in a quarter-hour bucket, so it is
-    /// excluded from the hour profile. Any session it belongs to keeps no
-    /// buckets at all rather than mixing dated and undated work.
+    /// excluded from the hour profile. Its session retains calendar-day
+    /// buckets for span filtering, but no quarter-hour series.
     var isAggregate: Bool = false
     /// True when the source could not prove the report was complete.
     ///
@@ -160,6 +160,7 @@ enum AgentUsageLedger {
 
             let extra = record.unclassifiedTokens
             let key = UsageLedgerReader.slotKey(for: record.timestamp)
+            guard let day = Self.day(for: key, calendar: calendar) else { continue }
             if known > 0 {
                 knownBuckets[key, default: [:]][model] =
                     (knownBuckets[key]?[model] ?? TokenTally()) + tally
@@ -168,7 +169,7 @@ enum AgentUsageLedger {
                         (eventBuckets[key]?[model] ?? TokenTally()) + tally
                 }
             }
-            if extra > 0, let day = Self.day(for: key, calendar: calendar) {
+            if extra > 0 {
                 dayUnknown[day, default: [:]][model, default: 0] += extra
                 if !record.isAggregate {
                     eventUnknown[key, default: [:]][model, default: 0] += extra
@@ -197,6 +198,7 @@ enum AgentUsageLedger {
                 if running.name == nil { running.name = name }
                 if running.title == nil { running.title = title }
                 if running.project == nil { running.project = project }
+                running.addDay(tokens: total, cost: money, on: day)
                 if record.isAggregate {
                     running.hasAggregate = true
                 } else {
@@ -214,6 +216,7 @@ enum AgentUsageLedger {
                     project: project,
                     hasAggregate: record.isAggregate
                 )
+                running.addDay(tokens: total, cost: money, on: day)
                 if !record.isAggregate { running.add(tokens: total, cost: money, at: key) }
                 sessions[sessionID] = running
             }
@@ -223,7 +226,7 @@ enum AgentUsageLedger {
         // Unclassified-only records still count, so both maps are checked.
         guard !knownBuckets.isEmpty || !dayUnknown.isEmpty else { return .empty }
 
-        var ledger = UsageLedgerReader.price(knownBuckets, with: prices, calendar: calendar)
+        var ledger = UsageLedgerReader.price(knownBuckets, with: prices, calendar: calendar, vendor: vendor)
 
         // **A raw id seen only as unclassified tokens still has a published
         // name.** It never reaches the pricing pass, so without this its
@@ -247,7 +250,7 @@ enum AgentUsageLedger {
         // bucket they landed in — never to a model's known tally, so a model's
         // hours stop reconciling and go nil rather than borrowing the count.
         var slotByStart: [Date: UsageLedger.Slot] = [:]
-        for slot in UsageLedgerReader.price(eventBuckets, with: prices, calendar: calendar).slots {
+        for slot in UsageLedgerReader.price(eventBuckets, with: prices, calendar: calendar, vendor: vendor).slots {
             slotByStart[slot.start] = slot
         }
         for (key, models) in eventUnknown {
@@ -320,11 +323,12 @@ enum AgentUsageLedger {
                     end: running.end,
                     tokens: running.tokens,
                     cost: running.cost,
-                    // An aggregate session has no trustworthy hour picture, so
-                    // it keeps **no** buckets and falls back to the whole
-                    // session in a span — never a partial series that silently
-                    // drops the undated work.
-                    slots: running.hasAggregate ? [] : UsageLedgerReader.sessionSlots(running.slots)
+                    // Aggregate timing withholds hours, not known dates. Day
+                    // buckets keep a resumed session inside the selected span.
+                    slots: running.hasAggregate ? [] : UsageLedgerReader.sessionSlots(running.slots),
+                    days: running.days.map { date, totals in
+                        .init(date: date, tokens: totals.tokens, cost: totals.cost)
+                    }.sorted { $0.date < $1.date }
                 )
             }
             .sorted { $0.end > $1.end }
@@ -378,6 +382,14 @@ enum AgentUsageLedger {
         var project: String?
         var hasAggregate: Bool
         var slots: [String: (tokens: Int, cost: Double)] = [:]
+        var days: [Date: (tokens: Int, cost: Double)] = [:]
+
+        mutating func addDay(tokens count: Int, cost money: Double, on day: Date) {
+            var total = days[day] ?? (tokens: 0, cost: 0)
+            total.tokens += count
+            total.cost += money
+            days[day] = total
+        }
 
         mutating func add(tokens count: Int, cost money: Double, at key: String) {
             var slot = slots[key] ?? (tokens: 0, cost: 0)

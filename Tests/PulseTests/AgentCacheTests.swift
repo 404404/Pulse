@@ -230,7 +230,7 @@ struct AgentCacheTests {
             tokens: 15, cost: 1.5,
             slots: [AgentCache.StoredSlot(
                 start: Date(timeIntervalSince1970: 100), tokens: 15, cost: 1.5, models: [:]
-            )]
+            )], days: []
         )
         let back = try JSONDecoder().decode(
             AgentCache.StoredSession.self, from: JSONEncoder().encode(stored)
@@ -239,6 +239,36 @@ struct AgentCacheTests {
         #expect(back.slots.first?.tokens == 15)
         #expect(back.slots.first?.cost == 1.5)
         #expect(back.slots.first?.start == Date(timeIntervalSince1970: 100))
+    }
+
+    @Test("Caches from earlier reader rules and sessions without day metadata are rejected")
+    func readerVersionAndSessionDaysAreRequired() throws {
+        let root = Self.temporary("cache-reader-version")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appending(path: "agent.json")
+        let ledger = AgentUsageLedger.build(
+            [AgentUsageRecord(timestamp: Date(timeIntervalSince1970: 1_789_372_800), model: "m",
+                              tally: TokenTally(input: 100), sessionID: "s", isAggregate: true)],
+            prices: [:], namespace: "cursor"
+        )
+        AgentCache.save(ledger, stamp: .init(source: "s", prices: "p"), for: .cursor, at: file)
+        let saved = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        for version: Int? in [nil, 5, 7] {
+            var changed = saved
+            changed["version"] = version
+            try JSONSerialization.data(withJSONObject: changed).write(to: file)
+            #expect(AgentCache.load(.cursor, at: file) == nil)
+        }
+
+        var changed = saved
+        var storedLedger = try #require(changed["ledger"] as? [String: Any])
+        var sessions = try #require(storedLedger["sessions"] as? [[String: Any]])
+        sessions[0].removeValue(forKey: "days")
+        storedLedger["sessions"] = sessions
+        changed["ledger"] = storedLedger
+        try JSONSerialization.data(withJSONObject: changed).write(to: file)
+        #expect(AgentCache.load(.cursor, at: file) == nil)
     }
 
     @Test("Per-model money and detail survive a real save and load, including a partial name")
@@ -596,7 +626,7 @@ struct AgentCacheTests {
         let loaded = try #require(AgentCache.load(.openCode, at: url))
 
         // Neither the name nor the "priced, just unclassified" note is lost:
-        // `modelNames` is still a `agent-5` field, so the schema is unchanged.
+        // `modelNames` must survive alongside the newer session-day metadata.
         #expect(loaded.ledger == ledger)
         #expect(loaded.ledger.modelNames["gpt-5"] == "GPT-5")
         #expect(loaded.ledger.unpricedModels.isEmpty)
