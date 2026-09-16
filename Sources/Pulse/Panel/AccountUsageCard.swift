@@ -306,7 +306,14 @@ enum TokenCount {
     /// "5.9B", "119M" — or "4.19亿", "4764万" where numbers are grouped by ten
     /// thousands. The scale is the point, not the digits.
     static func short(_ tokens: Int) -> String {
-        guard !LocalizationSource.groupsByTenThousands else { return grouped(tokens) }
+        short(tokens, units: LocalizationSource.myriadUnits)
+    }
+
+    /// The same formatting with the units supplied. Not `private` so
+    /// `MyriadUnitsTests` can drive it without setting the app's language; do
+    /// not tidy it back.
+    static func short(_ tokens: Int, units: (tenThousand: String, hundredMillion: String)?) -> String {
+        if let units { return grouped(tokens, units) }
 
         let value = Double(tokens)
         switch value {
@@ -319,16 +326,23 @@ enum TokenCount {
 
     /// 万 is 10⁴ and 亿 is 10⁸, so the breaks fall in different places than
     /// thousands do — 419,000,000 is 4.19亿, not "419 million".
-    private static func grouped(_ tokens: Int) -> String {
+    ///
+    /// The two characters are handed in rather than written here: the same
+    /// arithmetic serves Japanese and Korean, which break at the same powers
+    /// and spell them differently. See `LocalizationSource.myriadUnits`.
+    private static func grouped(
+        _ tokens: Int,
+        _ units: (tenThousand: String, hundredMillion: String)
+    ) -> String {
         let value = Double(tokens)
         switch value {
         case 100_000_000...:
             let scaled = value / 100_000_000
             // Three significant figures, which is what "419M" carried.
-            return format(scaled, decimals: scaled < 10 ? 2 : (scaled < 100 ? 1 : 0)) + "亿"
+            return format(scaled, decimals: scaled < 10 ? 2 : (scaled < 100 ? 1 : 0)) + units.hundredMillion
         case 10_000...:
             let scaled = value / 10_000
-            return format(scaled, decimals: scaled < 10 ? 1 : 0) + "万"
+            return format(scaled, decimals: scaled < 10 ? 1 : 0) + units.tenThousand
         default:
             return "\(tokens)"
         }
