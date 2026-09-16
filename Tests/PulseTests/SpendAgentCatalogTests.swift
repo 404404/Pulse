@@ -3,7 +3,7 @@ import Testing
 @testable import Pulse
 
 /// The agent catalogue: the seven readers Pulse verified on a real machine and
-/// the forty-six it added from format facts, the family each is routed to, and
+/// the forty-seven it added from format facts, the family each is routed to, and
 /// the metadata that keeps "recognised" from reading as "counted".
 ///
 /// Nothing here touches a user store. Roots are injected, presence is decided
@@ -42,7 +42,7 @@ struct SpendAgentCatalogTests {
         "cherrystudio", "commandcode", "opencodereview", "zcode",
         // Group C: databases.
         "hermes", "goose", "zed", "kiro", "crush", "unsloth",
-        "antigravity-cli", "micode", "devin-desktop",
+        "antigravity-cli", "antigravity-ide", "micode", "devin-desktop",
         // Group D: structured logs.
         "mux", "codebuff", "freebuff", "jcode", "augment", "gjc",
         "junie", "dsh", "fx", "lmstudio", "reasonix",
@@ -62,17 +62,17 @@ struct SpendAgentCatalogTests {
 
     // MARK: - Shape
 
-    @Test("The catalogue is the seven legacy readers plus the forty-six new clients")
+    @Test("The catalogue is the seven legacy readers plus the forty-seven new clients")
     func catalogueSize() {
-        #expect(SpendAgent.allCases.count == 53)
+        #expect(SpendAgent.allCases.count == 54)
         #expect(SpendAgent.allCases.filter { Self.legacy.contains($0) }.count == 7)
-        #expect(Self.newClients.count == 46)
+        #expect(Self.newClients.count == 47)
     }
 
-    @Test("The canonical id inventory is exactly the fifty-three clients")
+    @Test("The canonical id inventory is exactly the fifty-four clients")
     func canonicalInventory() {
         let ids = Set(SpendAgent.allCases.map(\.sourceID))
-        #expect(ids.count == 53)
+        #expect(ids.count == 54)
         #expect(ids == Self.canonicalIDs)
         // The two spellings that are not the case name or a plain conversion.
         #expect(SpendAgent.claudeCode.sourceID == "claude")
@@ -91,7 +91,7 @@ struct SpendAgentCatalogTests {
                 "\(agent.sourceID) has no route"
             )
         }
-        #expect(AgentRecordReaders.supportedClients.count == 46)
+        #expect(AgentRecordReaders.supportedClients.count == 47)
     }
 
     @Test("The seven legacy clients are not catalog clients")

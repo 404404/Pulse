@@ -60,12 +60,12 @@ struct DatabaseLogReadersTests {
 
     // MARK: - Catalogue
 
-    @Test("The catalogue is exactly the nine clients this family answers for")
+    @Test("The catalogue is exactly the ten clients this family answers for")
     func catalogue() {
         #expect(
             DatabaseLogReaders.supportedClients == Set([
                 "hermes", "goose", "zed", "kiro", "crush", "unsloth",
-                "antigravity-cli", "micode", "devin-desktop",
+                "antigravity-cli", "antigravity-ide", "micode", "devin-desktop",
             ])
         )
         // An unknown client has no inputs and no records, not an empty account.
@@ -949,5 +949,52 @@ struct DatabaseLogReadersTests {
         frame.append(UInt8((header >> 16) & 0xFF))
         frame.append(payload)
         return frame
+    }
+}
+
+/// The folders Antigravity's conversations are looked for in, and that the CLI
+/// and the IDE are never pooled.
+///
+/// Pinned for two failures, both silent. The spec named `antigravity-cli`
+/// alone, so a Mac with the IDE installed showed no Antigravity spend at all
+/// while holding a store the reader could read perfectly. And the first fix
+/// handed all the folders to one client, which would have added two products'
+/// usage into one figure.
+@Suite("Antigravity conversation roots")
+struct AntigravityRootsTests {
+    private static func roots(_ client: String, _ environment: [String: String] = [:]) -> [String] {
+        AntigravityCLIReader
+            .inputs(client: client, home: URL(fileURLWithPath: "/home"), environment: environment)
+            .map(\.path)
+    }
+
+    @Test("The CLI reads its own folder and only its own")
+    func cli() {
+        #expect(Self.roots("antigravity-cli") == ["/home/.gemini/antigravity-cli/conversations"])
+    }
+
+    @Test("The IDE reads both of its layouts, and not the CLI's")
+    func ide() {
+        let roots = Self.roots("antigravity-ide")
+        #expect(roots.contains("/home/.gemini/antigravity/conversations"))
+        #expect(roots.contains("/home/.gemini/antigravity-ide/conversations"))
+        #expect(!roots.contains("/home/.gemini/antigravity-cli/conversations"))
+    }
+
+    /// The whole point of the split: nothing is read by both.
+    @Test("The two clients share no root")
+    func disjoint() {
+        let cli = Set(Self.roots("antigravity-cli"))
+        let ide = Set(Self.roots("antigravity-ide"))
+        #expect(cli.intersection(ide).isEmpty)
+    }
+
+    @Test("GEMINI_CLI_HOME moves both clients' roots")
+    func overriddenHome() {
+        for client in ["antigravity-cli", "antigravity-ide"] {
+            let roots = Self.roots(client, ["GEMINI_CLI_HOME": "/elsewhere"])
+            #expect(!roots.isEmpty)
+            #expect(roots.allSatisfy { $0.hasPrefix("/elsewhere/") }, "\(client)")
+        }
     }
 }

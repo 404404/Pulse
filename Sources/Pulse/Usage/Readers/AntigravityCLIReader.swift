@@ -32,14 +32,36 @@ import Foundation
 /// **aggregate**, because a session anchor is not the moment of the turn. A
 /// file modification date is never used.
 enum AntigravityCLIReader {
-    static func inputs(home: URL, environment: [String: String]) -> [URL] {
+    /// **The CLI and the IDE are two clients, and are never added together.**
+    ///
+    /// They write the same one-SQLite-per-conversation store into sibling
+    /// folders under the same root, so one reader serves both — but each folder
+    /// belongs to a different product, and a reader that pooled them would put
+    /// one number on screen for two things the reader uses separately.
+    ///
+    /// The format spec named `antigravity-cli` alone, which is why the IDE went
+    /// unread: measured on a Mac with the IDE installed, that folder was absent
+    /// while `antigravity/conversations` held 38 readable generations. The
+    /// spec's path is kept rather than repointed, since it is presumably right
+    /// for whatever writes it; a root that does not exist yields no records.
+    static func inputs(client: String, home: URL, environment: [String: String]) -> [URL] {
         let root: URL
         if let value = DatabaseReaderSupport.environment("GEMINI_CLI_HOME", environment) {
             root = DatabaseReaderSupport.directory(value)
         } else {
             root = home.appending(path: ".gemini", directoryHint: .isDirectory)
         }
-        return [root.appending(path: "antigravity-cli/conversations", directoryHint: .isDirectory)]
+
+        let folders: [String] = switch client {
+        // Both IDE layouts: `antigravity` is what the current one writes,
+        // `antigravity-ide` is the other spelling seen beside it.
+        case "antigravity-ide": ["antigravity", "antigravity-ide"]
+        default: ["antigravity-cli"]
+        }
+
+        return folders.map {
+            root.appending(path: "\($0)/conversations", directoryHint: .isDirectory)
+        }
     }
 
     static func records(roots: [URL]) -> [AgentUsageRecord] {

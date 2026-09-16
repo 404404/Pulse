@@ -75,6 +75,7 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
     case crush
     case unsloth
     case antigravityCLI
+    case antigravityIDE
     case micode
     case devinDesktop
 
@@ -150,6 +151,7 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         case .crush: "crush"
         case .unsloth: "unsloth"
         case .antigravityCLI: "antigravity-cli"
+        case .antigravityIDE: "antigravity-ide"
         case .micode: "micode"
         case .devinDesktop: "devin-desktop"
         case .mux: "mux"
@@ -184,7 +186,19 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         case .kiloCLI: "Kilo CLI"
         case .grok: "Grok Build"
         case .kimiCLI: "Kimi CLI"
-        case .devinCLI: "Devin CLI"
+        // **"Devin", not "Devin CLI".** The store is `.../devin/cli/sessions.db`,
+        // but that `cli` is Devin's own directory layout, not a product
+        // marker: measured on a Mac with only Devin **Desktop** installed and
+        // no `devin` on PATH, that database was being written all the same —
+        // Desktop embeds the same core (its logs say `init_cli`,
+        // `binary=devin`) and drives it. Calling the rows CLI usage told
+        // somebody they had used a program they had never installed.
+        //
+        // The database cannot settle which client drove it, so this name does
+        // not try to. `devinDesktop` stays separate and keeps its qualifier,
+        // because its evidence — an `acp-events` capture tree — is Desktop's
+        // alone.
+        case .devinCLI: "Devin"
         case .pi: "Pi"
         case .omp: "Oh My Pi"
         case .senpi: "OmO Native"
@@ -210,7 +224,12 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         case .kiro: "Kiro"
         case .crush: "Crush"
         case .unsloth: "Unsloth"
+        // Three Antigravity entries, and the qualifiers are load-bearing: the
+        // CLI and the IDE write separate stores for separate products and are
+        // never pooled, and the third is fed by an export rather than by
+        // Antigravity itself.
         case .antigravityCLI: "Antigravity CLI"
+        case .antigravityIDE: "Antigravity IDE"
         case .micode: "MiMo Code"
         case .devinDesktop: "Devin Desktop"
         case .mux: "Mux"
@@ -225,7 +244,10 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         case .lmStudio: "LM Studio"
         case .reasonix: "Reasonix"
         case .cursor: "Cursor"
-        case .antigravity: "Antigravity"
+        // Qualified, and the qualifier is the whole difference: this one is
+        // fed by a Tokscale export of the IDE cache, not by Antigravity's own
+        // store. Nothing appears under it until that export exists.
+        case .antigravity: "Antigravity (export)"
         case .trae: "Trae"
         case .warp: "Warp"
         case .hindsight: "Hindsight"
@@ -251,7 +273,7 @@ enum SpendAgent: String, CaseIterable, Identifiable, Sendable {
         case .kimiCLI: .kimiCode
         case .devinCLI: .devin
         case .cursor: .cursor
-        case .antigravity, .antigravityCLI: .antigravity
+        case .antigravity, .antigravityCLI, .antigravityIDE: .antigravity
         case .commandCode: .commandCode
         case .devinDesktop: .devin
         case .copilot: .copilot

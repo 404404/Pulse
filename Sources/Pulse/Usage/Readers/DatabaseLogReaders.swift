@@ -20,7 +20,7 @@ enum DatabaseLogReaders {
     /// set is exactly the clients the app dispatches here.
     static let supportedClients: Set<String> = [
         "hermes", "goose", "zed", "kiro", "crush", "unsloth",
-        "antigravity-cli", "micode", "devin-desktop",
+        "antigravity-cli", "antigravity-ide", "micode", "devin-desktop",
     ]
 
     /// Every root a client's records are read out of, **including metadata
@@ -42,8 +42,8 @@ enum DatabaseLogReaders {
         case "kiro": return KiroReader.inputs(home: home, environment: environment)
         case "crush": return CrushReader.inputs(home: home, environment: environment)
         case "unsloth": return UnslothReader.inputs(home: home, environment: environment)
-        case "antigravity-cli":
-            return AntigravityCLIReader.inputs(home: home, environment: environment)
+        case "antigravity-cli", "antigravity-ide":
+            return AntigravityCLIReader.inputs(client: client, home: home, environment: environment)
         case "micode": return MicodeReader.inputs(home: home, environment: environment)
         case "devin-desktop":
             return DevinDesktopReader.inputs(home: home, environment: environment)
@@ -71,7 +71,7 @@ enum DatabaseLogReaders {
         case "kiro": return KiroReader.records(roots: roots)
         case "crush": return CrushReader.records(roots: roots)
         case "unsloth": return UnslothReader.records(roots: roots)
-        case "antigravity-cli": return AntigravityCLIReader.records(roots: roots)
+        case "antigravity-cli", "antigravity-ide": return AntigravityCLIReader.records(roots: roots)
         case "micode": return MicodeReader.records(roots: roots)
         case "devin-desktop": return DevinDesktopReader.records(roots: roots)
         default: return []
