@@ -175,7 +175,7 @@ struct TokenSpendView: View {
     /// make one produce records. A source that is absent entirely is not here —
     /// fifty-one empty rows would be worse than nothing.
     private var noRecordsGroup: some View {
-        SettingsGroup(String.localized("No usage records")) {
+        SettingsGroup(String.localized("No usage data read")) {
             SettingsRow(noRecords.map(\.displayName).joined(separator: " · ")) {
                 EmptyView()
             }

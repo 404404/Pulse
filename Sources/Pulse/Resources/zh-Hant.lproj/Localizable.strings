@@ -509,7 +509,7 @@
 "Some records use session report dates." = "部分記錄依工作階段回報日期歸日。";
 "Counts may be incomplete." = "計數可能不完整。";
 "Some compressed records could not be read." = "部分壓縮記錄無法讀取。";
-"No usage records" = "沒有用量記錄";
+"No usage data read" = "未讀取到用量";
 "Previous page" = "上一頁";
 "Next page" = "下一頁";
 "Rows per page" = "每頁筆數";

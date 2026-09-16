@@ -30,6 +30,8 @@ struct SettingsGroup<Content: View>: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(.separator.opacity(0.5), lineWidth: 1)
+                    // Decoration must not sit above the chart's hover target.
+                    .allowsHitTesting(false)
             }
         }
     }

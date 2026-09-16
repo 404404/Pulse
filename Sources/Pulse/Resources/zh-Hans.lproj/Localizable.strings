@@ -509,7 +509,7 @@
 "Some records use session report dates." = "部分记录按会话报告日期归日。";
 "Counts may be incomplete." = "计数可能不完整。";
 "Some compressed records could not be read." = "部分压缩记录无法读取。";
-"No usage records" = "无使用记录";
+"No usage data read" = "未读取到用量";
 "Previous page" = "上一页";
 "Next page" = "下一页";
 "Rows per page" = "每页条数";

@@ -509,7 +509,7 @@
 "Some records use session report dates." = "一部の記録はセッションの報告日で日付を決めています。";
 "Counts may be incomplete." = "件数が不完全な可能性があります。";
 "Some compressed records could not be read." = "一部の圧縮された記録を読めませんでした。";
-"No usage records" = "使用記録がありません";
+"No usage data read" = "使用量データ未取得";
 "Previous page" = "前のページ";
 "Next page" = "次のページ";
 "Rows per page" = "1 ページの行数";

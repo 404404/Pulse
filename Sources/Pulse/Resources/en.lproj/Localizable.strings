@@ -509,7 +509,7 @@
 "Some records use session report dates." = "Some records use session report dates.";
 "Counts may be incomplete." = "Counts may be incomplete.";
 "Some compressed records could not be read." = "Some compressed records could not be read.";
-"No usage records" = "No usage records";
+"No usage data read" = "No usage data read";
 "Previous page" = "Previous page";
 "Next page" = "Next page";
 "Rows per page" = "Rows per page";

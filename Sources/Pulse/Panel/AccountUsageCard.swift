@@ -49,6 +49,7 @@ struct AccountUsageCard: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(.separator.opacity(0.5), lineWidth: 1)
+                    .allowsHitTesting(false)
             }
 
             footnote
@@ -285,20 +286,24 @@ private struct DailyTokensChart: View {
                                 ? max(proxy.size.height * CGFloat(day.tokens) / CGFloat(peak), 4)
                                 : 2
                         )
-                        .help(Self.tooltip(day))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(SpendFormat.chartDate(day.date))
+                        .accessibilityValue(SpendFormat.tokens(day.tokens))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .overlay {
+                ChartHoverOverlay(samples: days.enumerated().map { index, day in
+                    .init(
+                        x: width / 2 + CGFloat(index) * (width + spacing),
+                        title: SpendFormat.chartDate(day.date),
+                        tokens: day.tokens
+                    )
+                })
+            }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(String.localized("Tokens per day"))
-    }
-
-    private static func tooltip(_ day: LedgerDay) -> String {
-        let date = day.date.formatted(
-            .dateTime.month(.abbreviated).day().locale(LocalizationSource.locale)
-        )
-        return "\(date) · \(TokenCount.short(day.tokens))"
     }
 }
 

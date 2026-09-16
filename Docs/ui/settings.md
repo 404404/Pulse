@@ -28,6 +28,8 @@ The general pane's **Notifications** group's three controls are not independent 
 
 ## Controls
 
+Card borders are decorative and ignore hit testing, so they cannot cover the controls or the charts' full-height hover targets. Chart readouts: [../token-spend.md](../token-spend.md), [../refresh-and-data.md](../refresh-and-data.md).
+
 SwiftUI `Picker` / `Menu` on macOS **cannot be given a width**. `.frame`, min/max, `fixedSize`, and a fixed-width custom label were measured (historical) and none moved the control. Right-align at `SettingsLayout.controlWidth` as a *ceiling*; long labels truncate. An `NSPopUpButton` wrapper did give a true 180pt box and was removed: short labels floated in empty chrome. Don’t rebuild it without checking that first.
 
 Sidebar column: **min 200, ideal 220, max 320**. Sized to "GitHub Copilot", the longest name in the list at fourteen characters, with "Command Code" and "Ollama Cloud" behind it — at the previous 170/180/220 they truncated to an ellipsis, on a list whose only job is telling eighteen products apart. They are brand names, so the requirement does not move with the language. `min` is the half that matters: AppKit saves the divider position, so `ideal` is read once per install while `min` clamps everyone.

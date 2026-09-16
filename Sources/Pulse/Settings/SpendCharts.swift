@@ -70,7 +70,9 @@ struct SpendBarChart: View {
                                     : 2
                             )
                             .frame(width: slot, alignment: .center)
-                            .help(Self.tooltip(bar))
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(SpendFormat.chartDate(bar.date))
+                            .accessibilityValue(SpendFormat.tokens(bar.tokens))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -80,6 +82,15 @@ struct SpendBarChart: View {
                     Rectangle()
                         .fill(.quaternary)
                         .frame(height: 1)
+                }
+                .overlay {
+                    ChartHoverOverlay(samples: bars.enumerated().map { index, bar in
+                        .init(
+                            x: slot * (CGFloat(index) + 0.5),
+                            title: SpendFormat.chartDate(bar.date),
+                            tokens: bar.tokens
+                        )
+                    })
                 }
             }
 
@@ -94,18 +105,15 @@ struct SpendBarChart: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+                .accessibilityHidden(true)
             }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(String.localized("Tokens per day"))
     }
 
     private static func shortDate(_ date: Date) -> String {
         date.formatted(.dateTime.month(.abbreviated).day().locale(LocalizationSource.locale))
-    }
-
-    private static func tooltip(_ bar: Bar) -> String {
-        "\(shortDate(bar.date)) · \(SpendFormat.tokens(bar.tokens))"
     }
 }
 
@@ -123,7 +131,10 @@ struct HourProfile: View {
 
         VStack(alignment: .leading, spacing: 6) {
             GeometryReader { proxy in
-                HStack(alignment: .bottom, spacing: 2) {
+                let spacing: CGFloat = 2
+                let width = max((proxy.size.width - spacing * 23) / 24, 0)
+
+                HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(0..<24, id: \.self) { hour in
                         let tokens = hours[hour] ?? 0
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -137,7 +148,9 @@ struct HourProfile: View {
                                     ? max((proxy.size.height - 1) * CGFloat(tokens) / CGFloat(peak), 3)
                                     : 2
                             )
-                            .help("\(SpendFormat.hour(hour)) · \(SpendFormat.tokens(tokens))")
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(SpendFormat.hour(hour))
+                            .accessibilityValue(SpendFormat.tokens(tokens))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -145,6 +158,15 @@ struct HourProfile: View {
                     Rectangle()
                         .fill(.quaternary)
                         .frame(height: 1)
+                }
+                .overlay {
+                    ChartHoverOverlay(samples: (0..<24).map { hour in
+                        .init(
+                            x: width / 2 + CGFloat(hour) * (width + spacing),
+                            title: SpendFormat.hour(hour),
+                            tokens: hours[hour] ?? 0
+                        )
+                    })
                 }
             }
 
@@ -158,8 +180,9 @@ struct HourProfile: View {
             .font(.system(size: 10))
             .foregroundStyle(.secondary)
             .monospacedDigit()
+            .accessibilityHidden(true)
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(String.localized("Tokens per hour"))
     }
 }
@@ -323,6 +346,12 @@ struct SpendCaption: View {
 /// "10 点". A key per language says it the way that language says it, and the
 /// number is interpolated as a string so the entry stays `%@`.
 enum SpendFormat {
+    /// A hover can be read without the surrounding span picker, including
+    /// across New Year, so unlike the axis it includes the year.
+    static func chartDate(_ date: Date) -> String {
+        date.formatted(.dateTime.year().month(.abbreviated).day().locale(LocalizationSource.locale))
+    }
+
     static func hour(_ hour: Int) -> String {
         .localized("\("\(hour)") o'clock")
     }
