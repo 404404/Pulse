@@ -75,7 +75,6 @@ struct SettingsView: View {
     /// Its own state rather than something derived from `ledgers`, which is
     /// filled one account at a time as their panes are opened.
     @State private var spend = SpendSummary()
-    @State private var spendSpan = SpendSpan.default
     @State private var isScanningSpend = false
     /// The agent the spend pane is looking at on its own, and that agent's own
     /// figures. Kept beside the combined ones rather than derived on the fly:
@@ -84,6 +83,25 @@ struct SettingsView: View {
     @State private var spendFocus: SpendAgent?
     @State private var focusedSpend = SpendSummary()
     @State private var spendLedgers: [SpendAgent: UsageLedger] = [:]
+    /// Present sources — installed, or captured/exported somewhere Pulse reads
+    /// — that produced no records at all. Named together at the foot of the
+    /// pane so a silent source is not mistaken for a zero reading. Not
+    /// span-dependent: "nothing was read" is the same answer over any span.
+    @State private var spendNoRecords: [SpendAgent] = []
+    /// Whether any present source held history a reader could not decode —
+    /// a compressed transcript, say. The pane shows a short generic status
+    /// rather than dropping those records silently; the readers' own English
+    /// diagnostics never reach the view.
+    @State private var spendHasReadLimitations = false
+    /// The model the spend pane has drilled into, and that model's own figures
+    /// over the same span — crossed with `spendFocus` when an agent is open, so
+    /// a model opened from an agent's list counts only that agent's work in it.
+    ///
+    /// **Not a setting.** Drilling in is a way of reading the page in front of
+    /// you, not a preference about the app, so it lives here and is dropped
+    /// when the agent changes rather than being written to `AppSettings`.
+    @State private var selectedModel: String?
+    @State private var modelSpend = ModelSpendSummary()
 
     var body: some View {
         NavigationSplitView {
@@ -162,7 +180,14 @@ struct SettingsView: View {
                                 summary: spend,
                                 focus: $spendFocus,
                                 focused: focusedSpend,
-                                span: $spendSpan,
+                                modelFocus: $selectedModel,
+                                modelSummary: modelSpend,
+                                noRecords: spendNoRecords,
+                                hasReadLimitations: spendHasReadLimitations,
+                                span: Binding(
+                                    get: { settings.spendSpan },
+                                    set: { settings.spendSpan = $0 }
+                                ),
                                 isLoading: isScanningSpend,
                                 refresh: { Task { await loadSpend(refresh: true) } }
                             )
@@ -187,6 +212,19 @@ struct SettingsView: View {
                 // and made a cached read look like a rescan.
                 .task(id: spendLoadKey) { await loadSpend() }
                 .onChange(of: spendKey) { _, _ in recomputeSpend() }
+                // A model opened under one agent means nothing under another,
+                // so changing the agent drops back out of the model.
+                .onChange(of: spendFocus) { _, _ in selectedModel = nil }
+                .onChange(of: selectedModel) { old, new in
+                    // Entering the detail drops the reader to the top, or they
+                    // land in the middle of it when the model row was well down
+                    // the page. Returning puts them back at the model list.
+                    if new != nil {
+                        proxy.scrollTo("heading", anchor: .top)
+                    } else if old != nil {
+                        proxy.scrollTo("models", anchor: .top)
+                    }
+                }
                 .onChange(of: connectionFocusRequest) {
                     proxy.scrollTo("connection", anchor: .top)
                     credentialFocused = true
@@ -1194,7 +1232,7 @@ struct SettingsView: View {
     /// What the *figures* depend on, which is read back out of what was loaded.
     private var spendKey: String {
         guard case .spend = pane else { return "-" }
-        return "\(spendSpan.rawValue)|\(spendFocus?.rawValue ?? "")"
+        return "\(settings.spendSpan.rawValue)|\(spendFocus?.rawValue ?? "")|\(selectedModel ?? "")"
     }
 
     /// Every agent's ledger, added up.
@@ -1219,6 +1257,20 @@ struct SettingsView: View {
         guard !Task.isCancelled else { return }
 
         spendLedgers = ledgers
+        // A source that is present but produced no token records is named at
+        // the foot of the pane rather than drawn as an empty row or a token
+        // reading of zero. This is a zero-token list on purpose: a source that
+        // reports money but no tokens belongs here too, because it has no
+        // usage *records* to show. Ordered by the catalogue so the list is
+        // stable between reads.
+        spendNoRecords = SpendAgent.present.filter { agent in
+            guard let ledger = ledgers[agent] else { return false }
+            return ledger.allTime.tokens == 0
+        }
+        // Only a limitation on a source that actually exists counts; the
+        // presence test inside `readNotes` does that filtering.
+        let readNotes = await AgentLedgers.shared.readNotes()
+        spendHasReadLimitations = !readNotes.isEmpty
         recomputeSpend()
     }
 
@@ -1226,11 +1278,35 @@ struct SettingsView: View {
     /// once for the agent being looked at. Deriving the second from the first
     /// would mean a second way of counting a span, and two ways of counting
     /// one thing eventually disagree.
+    ///
+    /// A model is counted from the same ledgers too, **narrowed to the agent on
+    /// screen first where there is one** — so a model opened from an agent's
+    /// list reports that agent's work in it and never the other agents' same
+    /// model. Nothing here reads a store: it is arithmetic over what was
+    /// already loaded, which is why opening a model costs no spinner.
+    ///
+    /// **One `now` and one calendar for all three.** Asked separately, a recompute
+    /// that happens to straddle midnight can put the combined total on one day
+    /// and the model on the next, so the drill-down no longer adds up to the row
+    /// it was opened from.
     private func recomputeSpend() {
-        spend = SpendSummary.of(spendLedgers, overLast: spendSpan.days)
-        focusedSpend = spendFocus.map { agent in
-            SpendSummary.of(spendLedgers.filter { $0.key == agent }, overLast: spendSpan.days)
-        } ?? SpendSummary()
+        let span = settings.spendSpan.days
+        let now = Date()
+        let calendar = Calendar.current
+        // The agent's ledgers, or all of them when no agent is open. Counted
+        // once and shared, so the agent summary and the model summary below
+        // cannot end up filtered differently.
+        let scoped = spendFocus.map { agent in
+            spendLedgers.filter { $0.key == agent }
+        } ?? spendLedgers
+
+        spend = SpendSummary.of(spendLedgers, overLast: span, now: now, calendar: calendar)
+        focusedSpend = spendFocus == nil
+            ? SpendSummary()
+            : SpendSummary.of(scoped, overLast: span, now: now, calendar: calendar)
+        modelSpend = selectedModel.map { name in
+            ModelSpendSummary.of(scoped, named: name, overLast: span, now: now, calendar: calendar)
+        } ?? ModelSpendSummary()
     }
 
     private func loadHistory() async {

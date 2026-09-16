@@ -52,7 +52,7 @@ Pulse 是一个停靠在屏幕边缘的小巧悬浮监视器。它展示各服�
 
 ### 多账号管理与本地消费账本
 - **多账号并行**：支持同一服务绑定多个订阅（Claude Code、Codex、Grok、Grok Bot），并排查看并自定义标签。
-- **本地消费历史**：直接解析本地 CLI 会话日志，基于官方公开 API 价格折算历史总消费，并估算限额窗口的实际价值。
+- **消费历史**：从本地记录、数据库与导出文件还原 token 消费，按官方公开 API 价格折算；默认查看最近 7 天，记住你选择的区间，并保留每个模型的用量与估算金额。
 - **十八个服务商**：Claude Code、Codex、Antigravity、Cursor、GitHub Copilot、Grok、Grok Bot、OpenCode Go、Kimi Code、Ollama Cloud、z.ai、Zhipu、MiniMax（国际与国内）、火山引擎、Command Code、DeepSeek，以及 Devin。
 - **可脚本化**：`Pulse --json` 输出最近一次读数——套餐、每条限额、重置时间，以及数字有多旧——可接 tmux、sketchybar、Raycast 或 shell 提示符。它只读缓存不发请求，高频轮询也不花代价。
 - **开发者集成**：在设置中导出 Raycast 扩展及可直接配置的 tmux、sketchybar、终端脚本；通过账户链接直达对应设置页。[安装指南](Docs/integrations.md)。
@@ -106,7 +106,7 @@ Pulse 仅呈现各服务上报的数字，绝不依靠本地 Token 粗略估算�
 >   ```bash
 >   xattr -cr /Applications/Pulse.app
 >   ```
-> *(后续通过内置的 Sparkle 进行静默更新，无需再次授权)*。
+>   *(后续通过内置的 Sparkle 进行静默更新，无需再次授权)*。
 
 ---
 

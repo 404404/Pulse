@@ -52,7 +52,7 @@ Pulse is an unobtrusive floating monitor that docks neatly along the edge of you
 
 ### Multi-Account & Local Ledger
 - **Multi-Account Support**: Monitor multiple subscriptions for the same provider (Claude Code, Codex, Grok, Grok Bot) side-by-side with custom labels.
-- **On-Device Spending History**: Reconstructs your historical token expenditures from local CLI session transcripts, calculated against published API prices.
+- **Spending History**: Reconstructs your token spending from local records, databases and exports, priced at published API prices. Opens on the last 7 days, remembers your chosen span, and keeps each model's tokens and estimated amount.
 - **Eighteen Providers**: Claude Code, Codex, Antigravity, Cursor, GitHub Copilot, Grok, Grok Bot, OpenCode Go, Kimi Code, Ollama Cloud, z.ai, Zhipu, MiniMax (intl. and mainland), Volcengine, Command Code, DeepSeek, and Devin.
 - **Scriptable**: `Pulse --json` prints the last readings — plan, every limit, reset times, and how old the figures are — for tmux, sketchybar, Raycast, or a shell prompt. It reads the cache and never fetches, so polling it costs nothing.
 - **Developer Integrations**: Export a Raycast extension and ready-to-configure tmux, sketchybar and shell scripts from Settings. Account links open the right pane directly. [Setup guide](Docs/integrations.md).
@@ -106,7 +106,7 @@ Pulse shows the figures each service reports. It never guesses percentages from 
 >   ```bash
 >   xattr -cr /Applications/Pulse.app
 >   ```
-> *(Subsequent updates via built-in Sparkle update smoothly without repeated prompts).*
+>   *(Subsequent updates via built-in Sparkle update smoothly without repeated prompts).*
 
 ---
 

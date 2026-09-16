@@ -468,6 +468,42 @@ final class AppSettings {
         }
     }
 
+    /// How far back the Token spend pane counts.
+    ///
+    /// The last **week** until the reader picks another span, and their pick is
+    /// kept: the pane answers a sit-down question, and making someone re-choose
+    /// the window on every visit is work nobody asked for. No `onChange?()` —
+    /// nothing about the panel's frame depends on it, and `@Observable` already
+    /// redraws whoever read it, the same as `warningThreshold`.
+    var spendSpan: SpendSpan {
+        didSet {
+            guard spendSpan != oldValue else { return }
+            Self.storeSpendSpan(spendSpan, in: .standard)
+        }
+    }
+
+    /// The span last chosen, or `.week` when nothing is stored or what is
+    /// stored no longer names an offered range.
+    ///
+    /// Takes the store as an argument, rather than reaching for
+    /// `UserDefaults.standard`, so the round trip can be pinned against an
+    /// isolated suite. `restored()` and `spendSpan`'s `didSet` both go through
+    /// this and `storeSpendSpan`, so what a test exercises is the one
+    /// production uses.
+    static func storedSpendSpan(in defaults: UserDefaults) -> SpendSpan {
+        defaults.string(forKey: Key.spendSpan)
+            .flatMap(SpendSpan.init(rawValue:)) ?? .default
+    }
+
+    static func storeSpendSpan(_ span: SpendSpan, in defaults: UserDefaults) {
+        defaults.set(span.rawValue, forKey: Key.spendSpan)
+    }
+
+    /// The key the chosen span lives under. Internal so a test can store a
+    /// value the picker no longer offers and prove the fallback; nothing
+    /// outside the module can see it either way.
+    static var spendSpanDefaultsKey: String { Key.spendSpan }
+
     /// Say on the card whether each limit will last its window.
     ///
     /// Off by default, and that is the same judgement the window clock gets:
@@ -673,6 +709,7 @@ final class AppSettings {
         showsForecast: Bool = false,
         showsSecondRing: Bool = false,
         splitAccounts: Set<String> = [],
+        spendSpan: SpendSpan = .default,
         alertThreshold: AlertThreshold = .default,
         alertsOnReset: Bool = false,
         alertsOnFailure: Bool = false
@@ -706,6 +743,7 @@ final class AppSettings {
         self.showsForecast = showsForecast
         self.showsSecondRing = showsSecondRing
         self.splitAccounts = splitAccounts
+        self.spendSpan = spendSpan
         self.alertThreshold = alertThreshold
         self.alertsOnReset = alertsOnReset
         self.alertsOnFailure = alertsOnFailure
@@ -956,6 +994,7 @@ final class AppSettings {
             showsForecast: defaults.object(forKey: Key.showsForecast) as? Bool ?? false,
             showsSecondRing: defaults.object(forKey: Key.showsSecondRing) as? Bool ?? false,
             splitAccounts: Set(defaults.stringArray(forKey: Key.splitAccounts) ?? []),
+            spendSpan: Self.storedSpendSpan(in: defaults),
             alertThreshold: (defaults.object(forKey: Key.alertThreshold) as? Int)
                 .flatMap(AlertThreshold.init(rawValue:)) ?? .default,
             alertsOnReset: defaults.object(forKey: Key.alertsOnReset) as? Bool ?? false,
@@ -1062,6 +1101,7 @@ final class AppSettings {
         static let showsForecast = "settings.showsForecast"
         static let showsSecondRing = "settings.showsSecondRing"
         static let splitAccounts = "settings.splitAccounts"
+        static let spendSpan = "settings.spendSpan"
         static let alertThreshold = "settings.alertThreshold"
         static let alertsOnReset = "settings.alertsOnReset"
         static let alertsOnFailure = "settings.alertsOnFailure"
