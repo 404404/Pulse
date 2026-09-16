@@ -41,4 +41,4 @@ When those notes disagree with `providers/README.md` or the code, the code and t
 
 ## User-facing
 
-- [../README.md](../README.md) / [../README.zh-CN.md](../README.zh-CN.md) — product pages. Keep bilingual parity. They are not the architecture source of truth.
+- [../README.md](../README.md) with [zh-CN](../README.zh-CN.md) / [zh-Hant](../README.zh-Hant.md) / [ja](../README.ja.md) / [ko](../README.ko.md) — product pages. Keep all five in parity. They are not the architecture source of truth.
