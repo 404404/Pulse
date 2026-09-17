@@ -298,6 +298,15 @@ final class AgentActivityMonitor {
     /// adaptive refresh interval.
     private(set) var lastWrite: Date?
 
+    /// When each provider's turn last *ended*, which is a different fact from
+    /// "is it running" and is not derivable from it after the event.
+    ///
+    /// The rail's animated mark celebrates a finished turn, and it may only do
+    /// that for something witnessed: this is the witness. Kept here because
+    /// this is the one place that sees the transition — a view comparing its
+    /// own previous render would celebrate whenever SwiftUI rebuilt it.
+    private(set) var finishedAt: [Provider: Date] = [:]
+
     /// Fast enough that the spinner starts and stops with the turn rather than
     /// lagging it noticeably, slow enough to be free.
     private static let interval: TimeInterval = 2
@@ -320,6 +329,8 @@ final class AgentActivityMonitor {
         timer?.invalidate()
         timer = nil
         guard !running.isEmpty else { return }
+        // Not a finish: the monitor stopping says nothing about the turn. A
+        // celebration here would fire every time the panel was hidden.
         running = []
     }
 
@@ -335,7 +346,11 @@ final class AgentActivityMonitor {
             // Assign only on a change: this runs every couple of seconds, and
             // `@Observable` would otherwise redraw the rail each time for
             // nothing.
-            if active != running { running = active }
+            if active != running {
+                let now = Date()
+                for provider in running.subtracting(active) { finishedAt[provider] = now }
+                running = active
+            }
 
             let newest = states.values.compactMap(\.lastWrite).max()
             if newest != lastWrite { lastWrite = newest }

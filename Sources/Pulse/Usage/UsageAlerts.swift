@@ -294,30 +294,11 @@ struct AlertMemory: Codable, Sendable, Equatable {
             var memory = seen ?? Window()
 
             if let seen {
-                let movedOn = window.resetsAt.map { new in
-                    // A minute of slack: a reset time is often rounded, and a
-                    // second of jitter is not a new window.
-                    seen.resetsAt.map { new.timeIntervalSince($0) > 60 } ?? false
-                } ?? false
-                // Said only when the evidence is unambiguous. `fell` alone is
-                // not: a rolling window — Kimi's week, which can reset anywhere
-                // inside it — slides down a few points at a time without
-                // anything having reset, and announcing that is worse than
-                // staying quiet. A reset time that has moved forward is the
-                // provider saying so; a figure that has dropped by forty points
-                // has not slid, it has turned over.
-                // **Never for a balance.** `Kind.balance` is prepaid credit
-                // and its own doc says it is not a limit: there is no window
-                // to turn over, `resetsAt` is always nil, so `movedOn` can
-                // never be true and the whole test collapses to "the fraction
-                // dropped 40 points". On DeepSeek that fraction is a *setting*
-                // — both modes emit the window id "balance" — so switching
-                // "My budget" to "Since top-up", or lowering the full-tank
-                // figure, posted "This limit has reset" about money that had
-                // not moved, within a second of touching the picker.
-                let unambiguous = window.kind != .balance
-                    && (movedOn || seen.fraction - window.usedFraction >= 0.4)
-
+                // Said only when the evidence is unambiguous — the rule, and
+                // why it is that rule, live on `UsageWindow.hasTurnedOver`.
+                // The rail's mark asks the same question of the same code.
+                let unambiguous = window.hasTurnedOver(since: seen.fraction,
+                                                       resetsAt: seen.resetsAt)
                 // **The step is cleared by the same evidence that would
                 // announce, not by the drop alone.** Clearing on any 5-point
                 // dip re-armed a window that had not reset: a rolling weekly
