@@ -182,8 +182,12 @@ struct BotMarkView: View {
     var body: some View {
         Group {
             if reduceMotion {
+                // **Solved outside the draw closure.** A still is three
+                // seconds of simulated animation, about 1.5ms of work; inside
+                // the closure it was re-solved on every draw, and a draw
+                // happens every time the pointer moves anywhere on the panel.
+                let still = BotMarkView.still(for: programme())
                 Canvas(rendersAsynchronously: false) { context, canvasSize in
-                    let still = BotMarkView.still(programme: programme())
                     drawBotMark(still.frame, config: still.config,
                                 in: &context, size: canvasSize)
                 }
@@ -194,7 +198,7 @@ struct BotMarkView: View {
                 // is seven of these redrawing at once behind a menu-bar app
                 // that is meant to cost nothing. Measured settled on a docked
                 // rail of seven rings: ~19% of a core at display rate against
-                // ~13% here, over a ~10% baseline with marks off.
+                // ~15% here, over a ~10% baseline with marks off.
                 TimelineView(.periodic(from: .now, by: 1.0 / 30)) { timeline in
                     let step = advance(timeline.date)
                     Canvas(rendersAsynchronously: false) { context, canvasSize in
@@ -272,17 +276,47 @@ struct BotMarkView: View {
         return (frame, programme.configuration(for: engine.state))
     }
 
-    /// The settled pose for a mood, with a fresh engine each time so nothing
-    /// is carried between calls.
-    /// The settled pose for a mood, with a fresh engine each time so nothing
-    /// is carried between calls.
-    private static func still(programme: BotMarkProgramme) -> (frame: BotMarkFrame,
-                                                               config: BotMarkConfig) {
+    /// What a still frame is of: everything that changes one.
+    private struct StillKey: Hashable {
+        var state: String
+        var shape: String
+        var tempo: Double
+        var motionScale: Double
+        var gazeBias: Double
+        var squashScale: Double
+        var rotationScale: Double
+    }
+
+    /// Stills already solved, keyed by what they are of.
+    ///
+    /// Memoised rather than kept in `@State`: the value is a pure function of
+    /// the programme, several rings can want the same one, and a `@State`
+    /// cache cannot be filled from inside `body` without writing state during
+    /// a view update. Bounded by the shapes × states a rail can ask for, and
+    /// only ever touched from the main actor's draw path.
+    private nonisolated(unsafe) static var stills: [StillKey: (frame: BotMarkFrame,
+                                                               config: BotMarkConfig)] = [:]
+
+    /// The settled pose for a programme, with a fresh engine so nothing is
+    /// carried between calls.
+    private static func still(for programme: BotMarkProgramme) -> (frame: BotMarkFrame,
+                                                                   config: BotMarkConfig) {
         var quiet = programme
         // A still has no playlist and no event: one state, held.
         quiet.states = [programme.states.first ?? "idle"]
         quiet.event = nil
         quiet.particlesEnabled = false
+        quiet.pointer = nil
+
+        let key = StillKey(state: quiet.states[0], shape: quiet.shape, tempo: quiet.tempo,
+                           motionScale: quiet.motionScale, gazeBias: quiet.gazeBias,
+                           squashScale: quiet.squashScale, rotationScale: quiet.rotationScale)
+        if let cached = stills[key] {
+            // The colours are not part of the key: they change nothing about
+            // the pose, and the config is rebuilt from the live programme.
+            return (cached.frame, quiet.configuration(for: key.state))
+        }
+
         let engine = BotMarkEngine()
         var time = 0.0
         var frame = engine.advance(to: time, programme: quiet)
@@ -290,14 +324,18 @@ struct BotMarkView: View {
             time += 1.0 / 60
             frame = engine.advance(to: time, programme: quiet)
         }
-        // Never on a blink: a still mark with its eyes shut reads as broken.
+        // Never mid-blink: a still mark caught with its eyes shut reads as
+        // broken. Waiting on `isBlinking` and not on the eyelid — see the
+        // engine, where that mistake is written down.
         var guardrail = 0
-        while engine.eyelid < 0.92 && guardrail < 180 {
+        while engine.isBlinking && guardrail < 120 {
             time += 1.0 / 60
             frame = engine.advance(to: time, programme: quiet)
             guardrail += 1
         }
-        return (frame, quiet.configuration(for: engine.state))
+        let config = quiet.configuration(for: engine.state)
+        stills[key] = (frame, config)
+        return (frame, config)
     }
 }
 

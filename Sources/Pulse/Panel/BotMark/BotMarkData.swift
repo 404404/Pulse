@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The upstream geometry and state tables, loaded from `bot-data.json`.
 ///
-/// The JSON is produced by `Tools/extract.py` out of the upstream
+/// The JSON is produced by `Scripts/extract-bot-data.py` out of the upstream
 /// `original-data.js` and `catalog.js`: 18 body shapes (a 96-point ring, the
 /// original Bézier outline, eye-placement spans), 25 two-eye expressions of
 /// 48 points each, and the per-state expression pools and cadences for all

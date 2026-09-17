@@ -29,9 +29,16 @@ final class ResetWatch {
     /// figure that falls is exactly how a reset is recognised, so running the
     /// cache through this would celebrate every network hiccup.
     func observe(_ reading: ProviderUsage, as account: AccountKey, now: Date = Date()) {
-        guard case .live = reading.state else { return }
+        // The same gate the alert rules put in front of this test, and for
+        // the reasons written there: a live reading, one that is actually
+        // recent, and windows that have not already outlived themselves
+        // between two polls. Sharing the rule and not the gate is how the two
+        // would drift apart.
+        guard case .live = reading.state,
+              let observedAt = reading.observedAt,
+              now.timeIntervalSince(observedAt) <= UsageCache.maximumAge else { return }
         var seen = windows[account.id] ?? [:]
-        for window in reading.windows {
+        for window in reading.windows where window.resetsAt.map({ $0 > now }) ?? true {
             if let previous = seen[window.id],
                window.hasTurnedOver(since: previous.fraction, resetsAt: previous.resetsAt) {
                 resets[account.id] = now

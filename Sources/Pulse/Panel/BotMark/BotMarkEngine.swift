@@ -143,9 +143,18 @@ final class BotMarkEngine {
 
     // MARK: Pointer
 
-    /// How open the eyes are right now, for stills that should not catch a
-    /// blink.
+    /// How open the eyes are right now.
     var eyelid: Double { eyeOpen.value }
+
+    /// Whether a blink is in flight.
+    ///
+    /// **This, and not `eyelid`, is what a still frame has to wait out.** A
+    /// state's resting eyelid is not 1: `drowsy` sits at 0.34 and never blinks
+    /// at all, `bored` at 0.6, `sad` at 0.7. Waiting for the eyelid to pass
+    /// 0.92 therefore never finishes for those states — and where it does
+    /// finish, it finishes on the 1.08 overshoot at the *top* of a blink,
+    /// which is precisely the frame it was meant to avoid.
+    var isBlinking: Bool { !blinkQueue.isEmpty || blinkTarget != nil }
 
     /// Where the pointer is, as a fraction of the view from its centre. Nil
     /// is "not pointed at".

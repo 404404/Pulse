@@ -16,11 +16,9 @@ enum BotMarkHours {
     static let end = 21
 
     static func isOvertime(at date: Date = Date(), calendar: Calendar = .current) -> Bool {
-        let parts = calendar.dateComponents([.hour, .weekday], from: date)
-        guard let hour = parts.hour, let weekday = parts.weekday else { return false }
-        // `weekday` is 1-based from Sunday in the Gregorian calendar.
-        let isWeekend = calendar.isDateInWeekend(date)
-        _ = weekday
-        return isWeekend || hour < start || hour >= end
+        guard let hour = calendar.dateComponents([.hour], from: date).hour else { return false }
+        // `isDateInWeekend` rather than a weekday number: which days are the
+        // weekend is a property of the calendar, not a pair of constants.
+        return calendar.isDateInWeekend(date) || hour < start || hour >= end
     }
 }

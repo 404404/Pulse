@@ -106,7 +106,7 @@
 "Cloud" = "구름";
 "Teardrop" = "물방울";
 "Leaf" = "잎";
-"The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it." = "이 봇의 성격입니다. 몸 모양과 움직임의 속도가 달라집니다. 자동은 옆 링과 다른 성격을 고릅니다.";
+"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "이 봇이 연기하는 캐릭터입니다. 어떤 동작을 얼마나 빠르게 쓰는지가 달라집니다. 자동은 옆 링과 다른 성격을 고릅니다.";
 "The character you picked for this bot, wherever this ring sits." = "이 봇에 지정한 성격을 링의 위치와 무관하게 사용합니다.";
 "Calm" = "차분함";
 "Eager" = "열심";

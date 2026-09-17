@@ -106,7 +106,7 @@
 "Cloud" = "雲";
 "Teardrop" = "しずく";
 "Leaf" = "葉";
-"The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it." = "このボットの性格です。体の形と動きの速さが変わります。自動なら隣のリングとは違う性格になります。";
+"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "このボットが演じるキャラクターです。どの動きをどの速さで使うかが変わります。自動なら隣のリングとは違う性格になります。";
 "The character you picked for this bot, wherever this ring sits." = "このボットに選んだ性格を、リングの位置に関係なく使います。";
 "Calm" = "おだやか";
 "Eager" = "はりきり";

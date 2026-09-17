@@ -106,7 +106,7 @@
 "Cloud" = "云朵";
 "Teardrop" = "水滴";
 "Leaf" = "叶片";
-"The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it." = "这个小机器人的性格：用哪种身体、动作多快。自动会让它和相邻的环各不相同。";
+"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "它扮演的角色：用哪些动作、节奏多快。自动会让它和相邻的环各不相同。";
 "The character you picked for this bot, wherever this ring sits." = "你为这个小机器人指定的性格，不随它在轨道上的位置变化。";
 "Calm" = "沉稳";
 "Eager" = "热切";

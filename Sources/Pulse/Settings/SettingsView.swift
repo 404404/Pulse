@@ -1108,7 +1108,7 @@ struct SettingsView: View {
                     SettingsRow(
                         String.localized("Bot personality"),
                         subtitle: settings.botPersona(for: account) == nil
-                            ? String.localized("The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it.")
+                            ? String.localized("The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it.")
                             : String.localized("The character you picked for this bot, wherever this ring sits.")
                     ) {
                         Picker("", selection: Binding(

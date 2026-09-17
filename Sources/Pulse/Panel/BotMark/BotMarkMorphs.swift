@@ -49,8 +49,7 @@ extension BotMarkEngine {
         var visible = requested != nil
         // `progress` and `spawning` are shots, not loops: they play, rest,
         // and play again.
-        if let requested, state == "progress" || state == "spawning" {
-            _ = requested
+        if requested != nil, state == "progress" || state == "spawning" {
             let shot: Double = state == "progress" ? 2500 : 2000
             if !oneShotResting, now - morphShotStartedAt > shot {
                 oneShotResting = true
@@ -270,7 +269,7 @@ extension BotMarkEngine {
     private func renderWave(amount: Double, now: Double, into shapes: inout [BotMarkFrame.Shape]) {
         let centre = BotMarkLibrary.shared.headCentre
         let offsets = [-2.0, -1.0, 1.0, 2.0]
-        for (index, offset) in offsets.enumerated() {
+        for offset in offsets {
             let phase = BotMath.clamp((amount - 0.1 * abs(offset)) / (1 - 0.1 * abs(offset)), 0, 1)
             guard phase > 0.004 else { continue }
             let energy = (0.42 + 0.29 * sin(0.0021 * now) * sin(0.0034 * now)
@@ -278,7 +277,6 @@ extension BotMarkEngine {
                 * (0.55 + 0.45 * sin(0.012 * now - 1.05 * abs(offset)))
             let size = (7 + 9 * BotMath.clamp(energy, 0.08, 1)) * BotMath.cubicOut(phase)
             let lift = 6 * BotMath.clamp(energy, 0, 1) * phase
-            _ = index
             shapes.append(circle(x: centre + 44 * offset * BotMath.backOut(phase),
                                  y: centre - lift, radius: size, opacity: phase))
         }

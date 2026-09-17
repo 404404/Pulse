@@ -83,9 +83,15 @@ struct FloatingUsagePanelView: View {
                     pointer: pointerPoint,
                     // Twenty minutes with nothing written by any CLI. The
                     // marks show it; nothing else reads it.
+                    //
+                    // **Nil is not quiet.** `lastWrite` is nil until the first
+                    // activity scan lands, and it is nil for somebody with no
+                    // CLI transcripts at all — so `?? true` had every mark
+                    // bored for the first seconds after launch, about nothing
+                    // it had looked at yet.
                     isQuiet: store.activity.lastWrite.map {
                         Date().timeIntervalSince($0) > 20 * 60
-                    } ?? true,
+                    } ?? false,
                     selectedSlot: selectedSlot,
                     edge: placement.edge,
                     isDocked: placement.isDocked,

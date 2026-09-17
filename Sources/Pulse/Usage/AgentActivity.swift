@@ -313,6 +313,9 @@ final class AgentActivityMonitor {
 
     private var timer: Timer?
     private var isScanning = false
+    /// Bumped by `stop()`, so a scan that was already in flight can tell that
+    /// it has outlived the monitor. See `sample()`.
+    private var generation = 0
 
     func start() {
         guard timer == nil else { return }
@@ -326,6 +329,7 @@ final class AgentActivityMonitor {
     }
 
     func stop() {
+        generation += 1
         timer?.invalidate()
         timer = nil
         guard !running.isEmpty else { return }
@@ -338,9 +342,20 @@ final class AgentActivityMonitor {
         guard !isScanning else { return }
         isScanning = true
 
+        let generation = self.generation
         Task {
             let states = await Task.detached(priority: .utility) { AgentActivity.states() }.value
             self.isScanning = false
+
+            // **A scan that outlived the monitor says nothing.** `stop()`
+            // clears `running` on purpose and does not record a finish,
+            // because the monitor stopping is not a turn ending. A result
+            // arriving after that used to be written anyway, which left a
+            // provider marked as running with no timer left to clear it — and
+            // then, on the next `start()`, the diff against an empty scan
+            // reported a *finish* for a turn that had ended unobserved hours
+            // earlier. The rail celebrated it.
+            guard generation == self.generation, self.timer != nil else { return }
 
             let active = Set(states.filter(\.value.isWorking).keys)
             // Assign only on a change: this runs every couple of seconds, and

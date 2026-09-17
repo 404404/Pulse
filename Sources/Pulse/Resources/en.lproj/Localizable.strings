@@ -106,7 +106,7 @@
 "Cloud" = "Cloud";
 "Teardrop" = "Teardrop";
 "Leaf" = "Leaf";
-"The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it." = "The bot's own character: which body it wears and how it moves. Automatic keeps it different from the rings beside it.";
+"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it.";
 "The character you picked for this bot, wherever this ring sits." = "The character you picked for this bot, wherever this ring sits.";
 "Calm" = "Calm";
 "Eager" = "Eager";

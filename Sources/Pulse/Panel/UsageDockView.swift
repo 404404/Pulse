@@ -406,8 +406,13 @@ struct UsageDockView: View {
         // Dealt here because this is the one place that knows the order the
         // rings are actually in — the rail shows enabled accounts, so who sits
         // next to whom is not knowable from `Provider.allCases`.
-        let botTints = BotMarkTint.deal(over: entries.map(\.usage.provider),
-                                        chosen: entries.map(\.botColour))
+        // Only when something is actually drawing a mark: the deal tries
+        // forty stride-and-rotation combinations, which is cheap but not free,
+        // and a rail of logos has no use for the answer.
+        let botTints = entries.contains(where: \.showsBotMark)
+            ? BotMarkTint.deal(over: entries.map(\.usage.provider),
+                               chosen: entries.map(\.botColour))
+            : []
         // Dealt by position so the ring beside this one is a different
         // character; a chosen persona simply wins over the deal.
         let personas = entries.enumerated().map { index, entry in
@@ -420,7 +425,7 @@ struct UsageDockView: View {
             ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                 UsageDockItem(
                     entry: entry,
-                    botTint: botTints[index],
+                    botTint: index < botTints.count ? botTints[index] : .clear,
                     botPersona: personas[index],
                     botBody: entry.botBody,
                     botGaze: gaze,

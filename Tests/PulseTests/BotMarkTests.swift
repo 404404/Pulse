@@ -371,7 +371,7 @@ struct BotMarkTests {
         }
         print("ribbons over 30s, states seen: \(states.sorted().joined(separator: ", "))")
         print("ribbons on \(framesWithRibbons) of \(Int(30 * 60)) frames")
-        #expect(framesWithRibbons > 60, "no ribbons in twelve seconds of working")
+        #expect(framesWithRibbons > 60, "no ribbons in thirty seconds of working")
     }
 
     /// The head may not leave the canvas: the viewBox has about 15 units of
@@ -484,6 +484,33 @@ struct BotMarkTests {
         // Saturday and Sunday, in the middle of the working day.
         #expect(BotMarkHours.isOvertime(at: at(19, 14), calendar: calendar))
         #expect(BotMarkHours.isOvertime(at: at(20, 14), calendar: calendar))
+    }
+
+    /// The three shapes whose turn profile is solved from spheres in 3D are
+    /// the only ones that touch `turnedShapeRing`'s solid branch — where a
+    /// cached baseline and a per-point `profile[index]` live. Nothing else
+    /// exercises them, so a body chosen from the picker could crash on a spin
+    /// that no test had ever run.
+    @Test("A solid body survives being spun")
+    func solidBodiesTurn() {
+        let solids: [BotMarkBody] = [.bean, .tablet, .cloud]
+        for body in solids {
+            #expect(BotMarkLibrary.shared.shape(body.shape).solid != nil,
+                    "\(body.shape) is not one of the solid shapes any more")
+            var programme = Self.programme(.playful, .working)   // playful spins
+            programme.shape = body.shape
+            let engine = BotMarkEngine()
+            var time = 0.0
+            // Long enough for the ambient gestures to spin it at least once.
+            while time < 20 {
+                time += 1.0 / 60
+                let frame = engine.advance(to: time, programme: programme)
+                let drawn = frame.headPath.boundingBoxOfPath
+                #expect(drawn.width.isFinite && drawn.height.isFinite,
+                        "\(body.shape) drew a non-finite outline")
+                #expect(drawn.width > 0, "\(body.shape) collapsed to nothing")
+            }
+        }
     }
 
     /// The programme a ring would hand the engine for this pair, so a test

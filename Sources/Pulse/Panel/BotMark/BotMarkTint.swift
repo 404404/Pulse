@@ -87,12 +87,12 @@ enum BotMarkTint {
                 if best == nil || score > best!.score { best = (score, stride, rotation) }
             }
         }
-        let chosen = best ?? (0, 3, 0)
+        let winner = best ?? (score: 0, stride: 3, rotation: 0)
 
         var index = 0
         return brands.map { brand in
             if let brand { return lifted(brand) }
-            let slot = (chosen.rotation + chosen.stride * index) % paletteSize
+            let slot = (winner.rotation + winner.stride * index) % paletteSize
             index += 1
             return wheel[slot]
         }
@@ -146,12 +146,6 @@ enum BotMarkTint {
     private static let wheel: [Color] = (0..<paletteSize).map { dealt(at: $0) }
     private static let wheelHues: [Double] = wheel.map(hue(of:))
 
-    private static func distance(of slot: Int, from hues: [Double]) -> Double {
-        guard !hues.isEmpty else { return 360 }
-        let candidate = hue(of: dealt(at: slot))
-        return hues.map { separation(candidate, $0) }.min() ?? 360
-    }
-
     private static func separation(_ first: Double, _ second: Double) -> Double {
         let difference = abs(first - second).truncatingRemainder(dividingBy: 360)
         return min(difference, 360 - difference)
@@ -185,8 +179,8 @@ enum BotMarkTint {
 
     /// The lightness that puts this hue at `target` luminance, by bisection.
     ///
-    /// Twenty steps is far more than the eye needs and costs nothing: this
-    /// runs once per provider per frame at worst, on ten providers.
+    /// Twenty steps is far more than the eye needs and costs nothing: the
+    /// wheel above is a `static let`, so this runs ten times per process.
     private static func levelled(hue: Double, saturation: Double, target: Double) -> Color {
         var low = 0.0
         var high = 1.0
