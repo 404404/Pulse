@@ -25,7 +25,7 @@
   <img src="Docs/demo.gif" width="340" alt="Pulse floating rail docked against the screen edge">
 </p>
 
-Pulse is an unobtrusive floating monitor that docks neatly along the edge of your screen. It shows remaining allowance from the figures each service reports — using that product's own client routes, not a Pulse server — with no Pulse account and no telemetry. Pulse does not invent usage percentages.
+Pulse is an unobtrusive floating monitor that docks neatly along the edge of your screen. It shows remaining allowance from the figures each service reports — using that product's own client routes, not a Pulse server — signed in as you already are, with nothing reported back. Every percentage on screen is a figure the service itself reported.
 
 **New in 1.2.0:** an optional animated mark in place of a provider's logo — a small bot that reacts to what that account is doing, with its own personality, shape and colour. [Release notes](https://github.com/qunqin24/Pulse/releases/tag/v1.2.0).
 
@@ -52,8 +52,8 @@ Pulse is an unobtrusive floating monitor that docks neatly along the edge of you
 - **Flexible Edge Docking**: Dock to the left, right, or top of your screen (above the menu bar), or float freely anywhere.
 - **Multi-Monitor Native**: Drag Pulse to any secondary display; it remembers screen placement and gracefully returns if disconnected. Turn on **Follow the active display** and the single rail moves itself to whichever screen your pointer is on.
 - **Auto-Collapse**: Automatically folds into a razor-thin sliver when idle to eliminate distraction, glowing red only when quota runs critically low.
-- **Opt-In Notifications**: Off until you turn them on. Get told when a limit passes 75/80/90/95%, when the provider says it is spent, when a window you were warned about comes back, and when several checks in a row fail so the panel is quietly showing older figures, and — for the services that sell prepaid credit — when the balance falls under a figure you set. Each thing is said once: a limit already past the line when you switch this on is mentioned straight away, then never again until it resets or gets worse.
-- **Spaces-Friendly**: By default, stays out of your full-screen application Spaces.
+- **Opt-In Notifications**: You choose which ones to switch on. Get told when a limit passes 75/80/90/95%, when the provider says it is spent, when a window you were warned about comes back, and when several checks in a row fail so the panel is quietly showing older figures, and — for the services that sell prepaid credit — when the balance falls under a figure you set. Each thing is said once: a limit already past the line when you switch this on is mentioned straight away, and again when it resets or gets worse.
+- **Spaces-Friendly**: Keeps to the Space you are working in, leaving full-screen apps to themselves.
 - **macOS Aesthetic**: Classic solid obsidian surface or native **Liquid Glass** on macOS 26+.
 - **Animated Marks (Optional)**: Replace a provider's logo with a small bot that reacts to what that account is doing — working, fetching, spent, or quiet. Off by default and switched on per account, with eight personalities, eighteen body shapes and a colour of your own if you want one.
 - **Rail Menu & Shortcuts**: Right-click the floating rail — or the collapsed sliver; Control-click works too — for a menu with Settings and Quit. In **Settings › General › Shortcuts** you can optionally assign global shortcuts to **Open settings** and **Show or hide the panel**; both are unset until you set one.
@@ -62,13 +62,13 @@ Pulse is an unobtrusive floating monitor that docks neatly along the edge of you
 ### Multi-Account & Local Ledger
 - **Multi-Account Support**: Monitor multiple subscriptions for the same provider (Claude Code, Codex, Grok, Grok Bot) side-by-side with custom labels.
 - **Token Spend (Settings-only)**: Reads local logs, databases and exports from a catalogue of **54 client sources**, including Gemini CLI, Cline, Roo Code, OpenClaw and GitHub Copilot. Cursor, Trae and other export sources need a prior export or capture. These are distinct from the rail's 18 quota providers; support and live-client validation vary by source. [Sources and coverage](Docs/token-spend-sources.md).
-- **Clear Usage Estimates**: Opens on the last 7 days and remembers your chosen span. Costs use published API prices, not subscription charges. Unknown prices stay unavailable, and incomplete counts or coarse timing are labelled; a source without token counters is not a zero reading.
+- **Clear Usage Estimates**: Opens on the last 7 days and remembers your chosen span. Costs use published API prices, not subscription charges. Unknown prices stay unavailable, incomplete counts and coarse timing are labelled, and a source that reports no token counters says so.
 - **Model Details & Charts**: Open a model for input/output/cache counts and estimated costs, daily and hourly charts where the records support them, contributions by agent, and sortable, paged detail tables. Point at a chart to read the date or hour and its token count. Unavailable daily or hourly detail is shown as unavailable, not zero.
 - **Eighteen Providers**: Claude Code, Codex, Antigravity, Cursor, GitHub Copilot, Grok, Grok Bot, OpenCode Go, Kimi Code, Ollama Cloud, z.ai, Zhipu, MiniMax (intl. and mainland), Volcengine, Command Code, DeepSeek, and Devin.
-- **Scriptable**: `Pulse --json` prints the last readings — plan, every limit, reset times, and how old the figures are — for tmux, sketchybar, Raycast, or a shell prompt. It reads the cache and never fetches, so polling it costs nothing.
+- **Scriptable**: `Pulse --json` prints the last readings — plan, every limit, reset times, and how old the figures are — for tmux, sketchybar, Raycast, or a shell prompt. It reads the cache, so polling costs nothing.
 - **Developer Integrations**: Export a Raycast extension and ready-to-configure tmux, sketchybar and shell scripts from Settings. Account links open the right pane directly. [Setup guide](Docs/integrations.md).
 - **Connection Diagnostics**: See the actual reading source, cache use, latest check and fallback outcomes. Contextual actions help reconnect, sign in again or fix credentials; copy a diagnostic report without account details or secrets.
-- **Privacy First**: No Pulse servers, no Pulse account, and no telemetry. Pulse contacts the providers you already use, fetches public model prices from [models.dev](https://models.dev) for the token-spend pane, and checks GitHub/Sparkle for app updates; macOS system proxy settings still apply.
+- **Privacy First**: Pulse runs on your Mac under your own provider logins. It makes three kinds of connection and they are all listed here: the providers you already use, [models.dev](https://models.dev) for public model prices in the token-spend pane, and GitHub/Sparkle for app updates. macOS system proxy settings still apply.
 
 <p align="center">
   <img src="Docs/panel.webp" height="300" alt="Detailed usage card beside rail">
@@ -98,7 +98,7 @@ Pulse is an unobtrusive floating monitor that docks neatly along the edge of you
 
 ## Supported Providers & Data Routes
 
-Pulse shows the figures each service reports. It never guesses percentages from local token counts. Routes differ by product (documented client APIs, editor logins, local language servers, pasted keys) — not one official public quota API for every row. Contributor detail: [Docs/providers/README.md](Docs/providers/README.md).
+Pulse shows the figures each service reports, and every percentage comes from that reply itself. Routes differ by product (documented client APIs, editor logins, local language servers, pasted keys) — not one official public quota API for every row. Contributor detail: [Docs/providers/README.md](Docs/providers/README.md).
 
 | Provider | Data Route & Auth Method | Notes |
 |---|---|---|
@@ -108,7 +108,7 @@ Pulse shows the figures each service reports. It never guesses percentages from 
 | **Cursor** | Cursor account usage summary API | Shows fast and slow request pools from existing editor login |
 | **Grok** | Grok Build CLI proxy (`cli-chat-proxy.grok.com`) | Single unified weekly pool shared across all Grok products |
 | **Grok Bot** | Cursor dashboard API | The xAI quota included with Cursor subscriptions |
-| **GitHub Copilot** | GitHub Device Code authentication | Requests minimal `read:user` scope; never accesses repositories |
+| **GitHub Copilot** | GitHub Device Code authentication | Requests the `read:user` scope alone |
 | **OpenCode Go** | API key or existing OpenCode CLI credentials | Fully configurable in Settings |
 | **Kimi Code** | Direct API key | Configured via Settings |
 | **z.ai** | Direct API key | International storefront (`api.z.ai`) |
@@ -143,10 +143,10 @@ Pulse shows the figures each service reports. It never guesses percentages from 
 ## Privacy & Security
 
 Pulse is designed with strict local-first security principles:
-- **No Pulse backend**: There is no Pulse server, account, or telemetry. The app talks to the providers you already use and does not insert its own proxy; it also fetches public model prices from [models.dev](https://models.dev) for the token-spend pane and checks GitHub/Sparkle for app updates. macOS system proxy settings still apply.
+- **No Pulse backend**: Your Mac talks straight to the providers you already use, under your own logins. It also fetches public model prices from [models.dev](https://models.dev) for the token-spend pane and checks GitHub/Sparkle for app updates. macOS system proxy settings still apply.
 - **Local Credentials**: Reads credentials already stored locally by your development tools (`~/.claude`, `~/.codex`, Cursor storage, etc.) where that is how the product works; some providers need a key or sign-in you enter in Settings.
 - **Encrypted Local Storage**: Manually entered API keys and session tokens are encrypted and saved strictly in Pulse's local application directory with owner-only permissions.
-- **Local Usage Records**: Pulse reads transcripts, databases and exports to obtain token counts and session metadata such as titles and working directories. These records may contain conversation text; processing stays on your Mac, and the records are never uploaded. Pulse does not scan source files or shell history for usage.
+- **Local Usage Records**: Pulse reads transcripts, databases and exports to obtain token counts and session metadata such as titles and working directories. These records may contain conversation text; processing stays on your Mac and the records stay with it. Pulse reads those records and nothing else.
 
 ---
 
