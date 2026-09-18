@@ -757,6 +757,26 @@ final class BotMarkEngine {
         return nil
     }
 
+    /// Turn a glance the rail's way, most of the time.
+    ///
+    /// **A constant offset is not enough on its own.** `gazeBias` is worth 7
+    /// units; the glance the state picks is worth up to 15, and 18 for a
+    /// persona that looks about more than most. Added together, a mark on the
+    /// right-hand edge still spent about half its glances staring off the side
+    /// of the display — measured, not guessed — because the lean only moved
+    /// the middle of a swing that was twice as wide as the lean itself.
+    ///
+    /// So the direction of the glance is decided here rather than only its
+    /// centre: four in five are folded toward the screen, and the fifth is
+    /// left alone. Reflecting every one of them would be worse — a mark whose
+    /// eyes can only ever travel one way reads as stuck, and the point of the
+    /// autonomous gaze is that it wanders.
+    private func inward(_ x: Double, config: BotMarkConfig) -> Double {
+        guard config.gazeBias != 0, Double.random(in: 0...1) < 0.8 else { return x }
+        // `gazeBias` already points the way the mark should face.
+        return (config.gazeBias < 0 ? -1 : 1) * abs(x)
+    }
+
     /// Where the eyes look next, and how long until they look somewhere else.
     private func updateAim(now: Double, config: BotMarkConfig) {
         guard now >= gazeNext else { return }
@@ -796,7 +816,7 @@ final class BotMarkEngine {
             x = 15 * BotMath.random(-0.4, 0.4)
             y = 9 * BotMath.random(-0.3, 0.3)
         }
-        aimX.target = x * config.gazeScale
+        aimX.target = inward(x, config: config) * config.gazeScale
         aimY.target = y * config.gazeScale
         gazeNext = now + BotMath.random(low, high) * config.tempo
     }

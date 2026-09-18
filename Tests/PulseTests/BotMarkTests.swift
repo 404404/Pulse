@@ -232,10 +232,11 @@ struct BotMarkTests {
     /// random glances would make this flake.
     @Test("The gaze lean moves the eyes, and the right way")
     func gazeLeanMovesTheEyes() {
-        func eyeCentre(bias: Double) -> Double {
+        func eyeCentre(_ gaze: BotMarkGaze) -> Double {
             var programme = BotMarkProgramme(states: ["idle"])
             programme.gazeScale = 0
-            programme.gazeBias = bias
+            programme.gazeBias = gaze.bias
+            programme.flipX = gaze.mirrored
             let engine = BotMarkEngine()
             var time = 0.0
             var frame = engine.advance(to: time, programme: programme)
@@ -243,15 +244,67 @@ struct BotMarkTests {
                 time += 1.0 / 60
                 frame = engine.advance(to: time, programme: programme)
             }
-            // Both eyes, so a wink or a blink cannot tilt the reading.
-            return frame.eyes.map { Double($0.transform.tx) }.reduce(0, +) / 2
+            // Both eyes, so a wink or a blink cannot tilt the reading, and in
+            // screen space, because the mirror is half of what aims the mark.
+            let engineSpace = frame.eyes.map { Double($0.transform.tx) }.reduce(0, +) / 2
+            return gaze.mirrored ? -engineSpace : engineSpace
         }
 
-        let ahead = eyeCentre(bias: BotMarkGaze.ahead.bias)
-        let left = eyeCentre(bias: BotMarkGaze.left.bias)
-        let right = eyeCentre(bias: BotMarkGaze.right.bias)
-        #expect(left < ahead - 3, "looking left did not move the eyes left")
-        #expect(right > ahead + 3, "looking right did not move the eyes right")
+        let ahead = eyeCentre(.ahead)
+        #expect(eyeCentre(.left) < ahead - 3, "looking left did not move the eyes left")
+        #expect(eyeCentre(.right) > ahead + 3, "looking right did not move the eyes right")
+    }
+
+    /// The lean alone is not enough, which is the whole reason the mirror
+    /// exists — and the reason the test above is not the test that matters.
+    ///
+    /// Several upstream states rest with the eyes well off to one side, and a
+    /// standing lean of 7 units cannot pull a pose that is 27 units out back
+    /// across the middle. Measured on the worst of them: `sleepy` at rest,
+    /// which sat right of centre on all but a handful of frames until the mark
+    /// was mirrored. Ten minutes at 30fps, so a glance every few seconds is
+    /// sampled hundreds of times and the average is not a coin toss.
+    @Test("A right-hand rail does not spend its time facing the screen edge")
+    func lopsidedStatesStillFaceInward() {
+        func meanGaze(_ persona: BotMarkPersona, _ mood: BotMarkMood,
+                      _ gaze: BotMarkGaze) -> Double {
+            var programme = Self.programme(persona, mood)
+            programme.gazeBias = gaze.bias
+            programme.flipX = gaze.mirrored
+            let engine = BotMarkEngine()
+            var time = 0.0
+            var samples: [Double] = []
+            while time < 600 {
+                time += 1.0 / 30
+                let frame = engine.advance(to: time, programme: programme)
+                // Morphs move the character deliberately, and a hidden eye is
+                // a body mid-spin rather than a mark looking anywhere.
+                guard frame.morphAmount < 0.01, frame.eyes.count == 2,
+                      frame.eyes.allSatisfy({ $0.visible }) else { continue }
+                let centre = CGPoint(x: BotMarkFrame.viewBoxCentre,
+                                     y: BotMarkFrame.viewBoxCentre)
+                    .applying(frame.transform).x
+                var sum = 0.0
+                for eye in frame.eyes {
+                    var transform = eye.transform.concatenating(frame.transform)
+                    guard let path = eye.path.copy(using: &transform) else { return 0 }
+                    sum += Double(path.boundingBoxOfPath.midX)
+                }
+                // Screen space: the mirror turns the engine's own x around.
+                samples.append((sum / 2 - Double(centre)) * (gaze.mirrored ? -1 : 1))
+            }
+            return samples.reduce(0, +) / Double(samples.count)
+        }
+
+        // Every character, at rest and at work, on a rail against the right
+        // edge. None of them may average out looking at the edge.
+        for persona in BotMarkPersona.allCases {
+            for mood in [BotMarkMood.working, .idle] {
+                let aimed = meanGaze(persona, mood, .left)
+                #expect(aimed < 0,
+                        "\(persona) \(mood) averages \(aimed) — right of centre on a right-hand rail")
+            }
+        }
     }
 
     /// Which way each edge looks. A rail on the right edge of the screen has
@@ -263,6 +316,12 @@ struct BotMarkTests {
         // A top rail has screen on both sides of it.
         #expect(BotMarkGaze(edge: .top) == .ahead)
         #expect(BotMarkGaze.ahead.bias == 0)
+        // The engine leans the same way whichever edge it is; the mirror is
+        // what turns a right-hand rail around.
+        #expect(BotMarkGaze.left.bias == BotMarkGaze.right.bias)
+        #expect(BotMarkGaze.left.mirrored)
+        #expect(!BotMarkGaze.right.mirrored)
+        #expect(!BotMarkGaze.ahead.mirrored)
     }
 
     /// Working has to be visible *as* working at ring size, which is the one

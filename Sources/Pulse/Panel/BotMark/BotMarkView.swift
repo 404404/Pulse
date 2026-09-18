@@ -83,9 +83,23 @@ func drawBotMark(_ frame: BotMarkFrame, config: BotMarkConfig,
 ///
 /// A rail against the right-hand edge of the screen has everything worth
 /// looking at to its left, and a mark staring off the edge of the display
-/// looks like it is facing a wall. The lean is added to the mark's own
-/// wandering gaze, not substituted for it, so it still glances about — from a
-/// head that is turned the right way.
+/// looks like it is facing a wall.
+///
+/// **Two mechanisms, because one of them cannot do it alone.** A standing
+/// lean moves the middle of the mark's wandering gaze, and a mirror turns the
+/// whole drawing over. Only the mirror can fix a pose that is *intrinsically*
+/// lopsided — several of the upstream states rest with the eyes well off to
+/// one side, and measured over ten minutes a `sleepy` mark sat right of centre
+/// on 97% of frames no matter how hard the lean pulled. Only the lean can fix
+/// a *symmetric* wander, which a mirror leaves exactly as symmetric as it
+/// found it. Both together are what stops a right-hand rail facing the wall.
+///
+/// So the engine always leans the same way — `bias` is positive whichever
+/// edge this is — and `mirrored` decides which way that comes out on screen.
+/// Everything else the flip touches follows the same rule: the pointer offset
+/// is already un-flipped inside the engine, and the badge a `notifying` mark
+/// glances at is drawn through the same mirrored transform as the eyes, so
+/// the two stay pointed at each other.
 enum BotMarkGaze: Sendable {
     case ahead
     case left
@@ -95,13 +109,12 @@ enum BotMarkGaze: Sendable {
     /// clamp that pins an eye against the inside of the body.
     private static let lean = 7.0
 
-    var bias: Double {
-        switch self {
-        case .ahead: 0
-        case .left: -Self.lean
-        case .right: Self.lean
-        }
-    }
+    /// Always outward in the engine's own space. `mirrored` turns it around.
+    var bias: Double { self == .ahead ? 0 : Self.lean }
+
+    /// Whether the whole mark is drawn mirrored. Only the left-facing case
+    /// needs it: the engine's unmirrored lean already points right.
+    var mirrored: Bool { self == .left }
 
     /// The rail's own edge decides it: docked right, look left; docked left,
     /// look right. A top rail runs horizontally and has screen on both sides,
@@ -249,6 +262,7 @@ struct BotMarkView: View {
         programme.gazeScale = persona.gazeScale
         programme.eyeScale = persona.eyeScale
         programme.gazeBias = gaze.bias
+        programme.flipX = gaze.mirrored
         programme.rotationScale = mood.rotationEmphasis
         programme.squashScale = mood.squashEmphasis
         programme.color = tint
@@ -283,6 +297,7 @@ struct BotMarkView: View {
         var tempo: Double
         var motionScale: Double
         var gazeBias: Double
+        var flipX: Bool
         var squashScale: Double
         var rotationScale: Double
     }
@@ -310,6 +325,7 @@ struct BotMarkView: View {
 
         let key = StillKey(state: quiet.states[0], shape: quiet.shape, tempo: quiet.tempo,
                            motionScale: quiet.motionScale, gazeBias: quiet.gazeBias,
+                           flipX: quiet.flipX,
                            squashScale: quiet.squashScale, rotationScale: quiet.rotationScale)
         if let cached = stills[key] {
             // The colours are not part of the key: they change nothing about
