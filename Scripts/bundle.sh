@@ -127,6 +127,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
          never becomes key, so that window can open behind everything and go
          unanswered. The toggle is in Settings instead, where it can be found. -->
     <key>SUEnableAutomaticChecks</key><true/>
+    <!-- Two hours, against Sparkle's default of one day. A day is sized for
+         apps that ship every few months; this one ships fixes for things it
+         is doing wrong right now, and a user burning a core on a bug that was
+         fixed yesterday should not have to wait out the rest of the day to
+         hear about it. Sparkle clamps anything under an hour, and the check
+         is measured from the last one rather than from launch, so this is at
+         most twelve requests a day and usually fewer.
+         Still only an offer: SUAutomaticallyUpdate stays false below. -->
+    <key>SUScheduledCheckInterval</key><integer>7200</integer>
     <!-- Downloading and installing on its own stays off: an update is offered,
          not applied behind the user's back. -->
     <key>SUAutomaticallyUpdate</key><false/>

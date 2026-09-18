@@ -307,7 +307,7 @@
 "%@ · up to date" = "%@ · 最新です";
 "Update to %@" = "%@ に更新";
 "Check automatically" = "自動で確認";
-"Once a day. Updates are offered, never installed on their own." = "1 日 1 回です。案内するだけで、勝手にインストールはしません。";
+"Every two hours. Updates are offered, never installed on their own." = "2 時間ごとに確認します。案内するだけで、勝手にインストールはしません。";
 "Couldn't reach the update feed." = "更新フィードに接続できませんでした。";
 "Uses the key you entered." = "入力したキーを使います。";
 "API key" = "API キー";

@@ -307,7 +307,7 @@
 "%@ · up to date" = "%@ · up to date";
 "Update to %@" = "Update to %@";
 "Check automatically" = "Check automatically";
-"Once a day. Updates are offered, never installed on their own." = "Once a day. Updates are offered, never installed on their own.";
+"Every two hours. Updates are offered, never installed on their own." = "Every two hours. Updates are offered, never installed on their own.";
 "Couldn't reach the update feed." = "Couldn't reach the update feed.";
 "Uses the key you entered." = "Uses the key you entered.";
 "API key" = "API key";

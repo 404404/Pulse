@@ -2491,7 +2491,7 @@ struct SettingsView: View {
 
                     SettingsRow(
                         String.localized("Check automatically"),
-                        subtitle: String.localized("Once a day. Updates are offered, never installed on their own.")
+                        subtitle: String.localized("Every two hours. Updates are offered, never installed on their own.")
                     ) {
                         Toggle("", isOn: Binding(
                             get: { update.checksAutomatically },

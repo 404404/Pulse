@@ -307,7 +307,7 @@
 "%@ · up to date" = "%@ · 최신 버전";
 "Update to %@" = "%@ (으)로 업데이트";
 "Check automatically" = "자동으로 확인";
-"Once a day. Updates are offered, never installed on their own." = "하루에 한 번입니다. 알려 주기만 하고 임의로 설치하지 않습니다.";
+"Every two hours. Updates are offered, never installed on their own." = "두 시간마다 확인합니다. 알려 주기만 하고 임의로 설치하지 않습니다.";
 "Couldn't reach the update feed." = "업데이트 피드에 접속하지 못했습니다.";
 "Uses the key you entered." = "입력한 키를 씁니다.";
 "API key" = "API 키";

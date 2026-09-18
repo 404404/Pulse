@@ -307,7 +307,7 @@
 "%@ · up to date" = "%@ · 已是最新版";
 "Update to %@" = "更新到 %@";
 "Check automatically" = "自動檢查";
-"Once a day. Updates are offered, never installed on their own." = "每天一次。只會提示，不會自行安裝。";
+"Every two hours. Updates are offered, never installed on their own." = "每兩小時檢查一次。只會提示，不會自行安裝。";
 "Couldn't reach the update feed." = "連不上更新來源。";
 "Uses the key you entered." = "使用你填入的金鑰。";
 "API key" = "API 金鑰";
