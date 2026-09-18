@@ -59,4 +59,8 @@ Sparkle updates from the **zip**, not the DMG. The image is for people.
 - Public key: `Scripts/sparkle-public-key.txt` (committed). Private key: `SPARKLE_PRIVATE_KEY` only.
 - `Scripts/appcast.py` signs the zip and appends to `appcast.xml`. The workflow commits the feed **after** publishing (the feed points at the release asset).
 
-`Scripts/changelog.py` converts one CHANGELOG section to HTML. Grammar: bullets, `**bold**`, `` `code` ``, links.
+`Scripts/changelog.py` reads one CHANGELOG section and emits it three ways: as markdown, `--html` for the feed, and `--release-notes` for the GitHub page. Grammar: bullets, `**bold**`, `` `code` ``, links.
+
+**The release page is assembled by the script, not by the workflow.** It used to be the entry, one hard-coded English install block and GitHub's generated commit list stapled together in `release.yml` — which is not the shape the pages before it had, so each release was reformatted by hand afterwards or left looking unlike its neighbours. `--release-notes` now produces the whole thing: the language nav, an anchored `<h2>` per language, the "already running x.y.z?" line, the install block **in each language**, and the compare link. The commit list is left out on purpose — direct commits mean dozens of lines of "Update README" under an entry that already says what changed.
+
+That format reads the entry's own `**中文**` / `**English**` markers to find the sections, so an entry must carry both. The workflow checks for both anchors **before it builds**: an entry missing one still passes the "has an entry" check and would otherwise publish a page whose language nav points at an anchor that is not there. An entry with neither marker — the pre-1.0.2 ones — falls back to a single English section rather than inventing a nav bar.

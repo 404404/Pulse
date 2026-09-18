@@ -57,6 +57,18 @@ jobs:
             exit 1
           fi
 
+          # And that it has both language sections, because the page is built
+          # from them. An entry missing its `**English**` marker still passes
+          # the check above and then publishes a page with one section and a
+          # language nav pointing at an anchor that is not there.
+          NOTES="$(Scripts/changelog.py "$VERSION" --release-notes)"
+          for ANCHOR in cn en; do
+            if ! printf '%s' "$NOTES" | grep -q "id=\"$ANCHOR-pulse-$VERSION\""; then
+              echo "::error::The $VERSION entry has no '$ANCHOR' section. Both **中文** and **English** are needed."
+              exit 1
+            fi
+          done
+
       - name: Check the SDK is new enough
         run: |
           SDK="$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)"
@@ -94,36 +106,19 @@ jobs:
           ls -lh build.noindex/
 
       - name: Release notes
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          # Generated notes plus the part that isn't in the commit history:
-          # what to do when macOS refuses to open it.
-          gh api "repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name="v$VERSION" \
-            --jq .body > generated.md || echo "" > generated.md
-
-          # The same words the update window shows, so the two cannot drift
-          # apart. Its presence was checked before anything was built.
-          Scripts/changelog.py "$VERSION" > body.md
-
-          {
-            cat body.md
-            echo
-            echo "### Install"
-            echo
-            echo "Download **Pulse-$VERSION.dmg**, open it and drag Pulse into Applications."
-            echo
-            echo "Pulse isn't signed with an Apple Developer ID, so macOS blocks the first"
-            echo "launch — and on macOS 15 and later the old right-click → Open trick no"
-            echo "longer works. Open Pulse, dismiss the warning, then go to"
-            echo "**System Settings → Privacy & Security**, scroll to **Security**, and click"
-            echo "**Open Anyway**. Once only."
-            echo
-            echo "Requires macOS 14 or newer. Universal (Apple Silicon and Intel)."
-            echo
-            cat generated.md
-          } > notes.md
+          # The whole page, assembled from the same entry the update window
+          # shows so the two cannot drift apart. Its presence was checked
+          # before anything was built.
+          #
+          # **Assembled by the script, not here.** This step used to staple
+          # the entry to a hard-coded English install block and GitHub's
+          # generated commit list, which is not the shape the pages before it
+          # had — so each release was reformatted by hand afterwards, or left
+          # looking different from its neighbours. The language sections, the
+          # anchors, the upgrade line, the install block in each language and
+          # the compare link now all come out of `changelog.py`.
+          Scripts/changelog.py "$VERSION" --release-notes > notes.md
 
       - name: Publish
         id: publish
