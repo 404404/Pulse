@@ -77,6 +77,35 @@ struct CodexAppServerTests {
                 "the current reader was torn down by a stale one's EOF")
     }
 
+    /// EOF must not leave a live helper with nothing able to kill it.
+    ///
+    /// EOF on stdout usually means the helper exited, but it can also mean one
+    /// still running with its output closed. Forgetting the `Process` there
+    /// orphans it: `shutDown` terminates a `process` that is by then nil, so
+    /// quitting Pulse leaves it behind.
+    @Test("A reader that closes does not orphan the helper")
+    func eofTerminatesRatherThanForgets() async throws {
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // Closes its stdout immediately and then stays alive — exactly the
+        // case where EOF is not the same thing as the process exiting.
+        helper.arguments = ["-c", "exec 1>&-; sleep 30"]
+        let pipe = Pipe()
+        helper.standardOutput = pipe
+        try helper.run()
+
+        let server = CodexAppServer()
+        await server.adopt(helper, reader: pipe.fileHandleForReading)
+        await server.readerClosed(pipe.fileHandleForReading)
+
+        // Give the signal a moment to land.
+        let deadline = Date().addingTimeInterval(3)
+        while helper.isRunning, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!helper.isRunning, "the helper outlived the reader that was dropped")
+    }
+
     /// Shutting down has to take the handler off too. Terminating the child
     /// closes its end of the pipe, which is exactly the condition that spins.
     @Test("Shutting down takes the handler off")

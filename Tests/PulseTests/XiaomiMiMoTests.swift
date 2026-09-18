@@ -138,6 +138,35 @@ struct XiaomiMiMoTests {
         #expect(try XiaomiMiMoClient.parseBalance(data) == nil)
     }
 
+    /// The envelope is read before the payload, on every route.
+    ///
+    /// A non-zero `code` over an HTTP 200 is a failure wearing a success's
+    /// clothes. Read without checking it, a `code` 500 came out as "no Coding
+    /// Plan on this account" — a fault reported as a subscription, which
+    /// `UsageAlerts` then classes as an answer and uses to clear an outage.
+    @Test("A non-zero code is not a plan, whatever the payload says")
+    func nonZeroCodeIsNotAPlan() throws {
+        let broken = Data("""
+        {"code":500,"message":"internal error","data":{"monthUsage":{"percent":0,
+        "items":[{"name":"Coding Plan","used":1,"limit":100,"percent":1}]}}}
+        """.utf8)
+        #expect(XiaomiMiMoClient.parsePlan(detail: nil, usage: broken) == nil,
+                "a 500 envelope was read as an allowance")
+    }
+
+    /// The detail route's envelope too: a bad one must not contribute a reset
+    /// or a plan name to a row built from the usage route.
+    @Test("A non-zero detail code contributes nothing")
+    func nonZeroDetailCodeIsIgnored() throws {
+        let broken = Data("""
+        {"code":401,"data":{"planCode":"leaked","currentPeriodEnd":"2026-10-01 00:00:00","expired":false}}
+        """.utf8)
+        let plan = try #require(XiaomiMiMoClient.parsePlan(
+            detail: broken, usage: try Self.fixture("xiaomi-plan-usage")))
+        #expect(plan.code == nil)
+        #expect(plan.periodEnd == nil)
+    }
+
     // MARK: - What the rail is told
 
     /// The period's end is reported and its length never is. A length is

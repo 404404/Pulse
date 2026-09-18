@@ -156,6 +156,16 @@ actor CodexAppServer {
         }
     }
 
+    /// Take ownership of a helper and its pipe, for `CodexAppServerTests`.
+    ///
+    /// `ensureRunning` is the only caller in the app; a test cannot use it
+    /// without `codex` installed, and the invariant worth testing — that EOF
+    /// terminates rather than forgets — needs a real process to observe.
+    func adopt(_ process: Process, reader: FileHandle) {
+        self.process = process
+        startReading(reader)
+    }
+
     /// The helper's stdout reached EOF: it has exited, or is exiting.
     ///
     /// Anything still waiting is waiting for a process that will not answer,
@@ -168,6 +178,14 @@ actor CodexAppServer {
     func readerClosed(_ handle: FileHandle) {
         guard handle === reader else { return }
         reader = nil
+        // **Terminated, not merely forgotten.** EOF on stdout usually means
+        // the helper exited, but it can also mean a helper that is still
+        // running with its output closed. Dropping the `Process` there leaves
+        // it with nothing able to kill it — not even `shutDown`, which
+        // terminates a `process` that is by then nil — so quitting Pulse would
+        // leave it behind. `terminate()` on one that has already exited is a
+        // no-op.
+        process?.terminate()
         process = nil
         stdin = nil
         failAllPending()

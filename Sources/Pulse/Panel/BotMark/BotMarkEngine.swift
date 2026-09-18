@@ -801,10 +801,12 @@ final class BotMarkEngine {
     /// left alone. Reflecting every one of them would be worse — a mark whose
     /// eyes can only ever travel one way reads as stuck, and the point of the
     /// autonomous gaze is that it wanders.
+    /// The lean is always *positive* in the engine's own space — `facing` is
+    /// what decides which way that lands on screen — so folding a glance
+    /// inward means folding it to +x and letting the turn take it from there.
     private func inward(_ x: Double, config: BotMarkConfig) -> Double {
         guard config.gazeBias != 0, Double.random(in: 0...1) < 0.8 else { return x }
-        // `gazeBias` already points the way the mark should face.
-        return (config.gazeBias < 0 ? -1 : 1) * abs(x)
+        return abs(x)
     }
 
     /// Where the eyes look next, and how long until they look somewhere else.
@@ -1224,7 +1226,12 @@ final class BotMarkEngine {
         // the turn: the mark looks across, not away. Reflected about the head
         // and swapped, because the left eye of a mark looking right is the
         // right eye of the same mark looking left.
-        let turn = (1 - facingValue) / 2
+        // Clamped because `facing` is under-damped and overshoots past ±1,
+        // and `lerpRing` extrapolates rather than clamping its own amount —
+        // so an un-clamped `turn` draws the eyes slightly *past* the mirror
+        // on the way in. Sub-pixel at today's damping; it scales with any
+        // future overshoot, which is what makes it worth pinning here.
+        let turn = BotMath.clamp((1 - facingValue) / 2, 0, 1)
         if turn > 0.001 {
             eyeRings = (0..<2).map { index in
                 BotMarkGeometry.lerpRing(

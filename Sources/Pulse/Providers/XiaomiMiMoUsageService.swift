@@ -26,6 +26,9 @@ enum XiaomiMiMoError: Error, Equatable {
     case unreadableReply(String)
     case rateLimited
     case serverError
+    /// Nothing came back at all — no network, DNS, TLS, a timeout. Distinct
+    /// from `unreadableReply`, which means something did come back.
+    case unreachable
 }
 
 /// What one read of the console returns.
@@ -123,11 +126,19 @@ struct XiaomiMiMoClient: Sendable {
         // The plan is what the ring is for, so its failure is the call's
         // failure. The balance is a line on the card, so a balance route that
         // does not answer costs that line and nothing else.
-        async let planDetail = try? get("tokenPlan/detail", cookie: header)
-        async let planUsage = try? get("tokenPlan/usage", cookie: header)
-        async let balance = try? get("balance", cookie: header)
+        //
+        // **What each route threw is kept, not discarded.** `try?` here made
+        // every status `get` bothers to classify unreachable: an HTTP 401, a
+        // 429 and a 500 all became three nils and came out as "the reply could
+        // not be read". A session that needs signing in again has to say so.
+        async let planDetail = outcome(of: "tokenPlan/detail", cookie: header)
+        async let planUsage = outcome(of: "tokenPlan/usage", cookie: header)
+        async let balance = outcome(of: "balance", cookie: header)
 
-        let (detailData, usageData, balanceData) = await (planDetail, planUsage, balance)
+        let routes = await [planDetail, planUsage, balance]
+        let detailData = try? routes[0].get()
+        let usageData = try? routes[1].get()
+        let balanceData = try? routes[2].get()
 
         // Every route is the same envelope, so one expired session shows up on
         // all three. Reported from whichever answered rather than from a
@@ -135,8 +146,12 @@ struct XiaomiMiMoClient: Sendable {
         for data in [detailData, usageData, balanceData].compactMap({ $0 }) {
             if let refusal = Self.refusal(in: data) { throw refusal }
         }
-        guard detailData != nil || usageData != nil || balanceData != nil else {
-            throw XiaomiMiMoError.unreadableReply("no route answered")
+
+        // Nothing answered. Report what the routes actually said rather than
+        // one blanket sentence: the worst of the three, so a session problem
+        // outranks a timeout and the reader is sent to the right remedy.
+        if detailData == nil, usageData == nil, balanceData == nil {
+            throw Self.worst(of: routes)
         }
 
         let money = balanceData.flatMap { try? Self.parseBalance($0) }
@@ -144,6 +159,45 @@ struct XiaomiMiMoClient: Sendable {
             plan: Self.parsePlan(detail: detailData, usage: usageData),
             balance: money?.amount,
             currency: money?.currency)
+    }
+
+    /// One route's answer, kept whichever way it went.
+    private func outcome(of path: String, cookie: String) async -> Result<Data, XiaomiMiMoError> {
+        do {
+            return .success(try await get(path, cookie: cookie))
+        } catch let error as XiaomiMiMoError {
+            return .failure(error)
+        } catch is CancellationError {
+            return .failure(.unreachable)
+        } catch {
+            // A transport failure — no network, DNS, TLS, a timeout. **Not
+            // `unreadableReply`**, which means something came back and could
+            // not be parsed; `ConnectionRemedy` offers Setup help for that and
+            // Retry for this, and a dropped wifi connection should not send
+            // somebody to the documentation.
+            return .failure(.unreachable)
+        }
+    }
+
+    /// The most actionable of several failures.
+    ///
+    /// A session that has to be signed in again outranks a timeout: if one
+    /// route says the login is refused and another merely timed out, the login
+    /// is the thing to tell the reader about.
+    private static func worst(of routes: [Result<Data, XiaomiMiMoError>]) -> XiaomiMiMoError {
+        let failures = routes.compactMap { route -> XiaomiMiMoError? in
+            guard case .failure(let error) = route else { return nil }
+            return error
+        }
+        let rank: (XiaomiMiMoError) -> Int = { error in
+            switch error {
+            case .sessionExpired, .missingCookie, .invalidCookie: 3
+            case .rateLimited, .serverError: 2
+            case .unreachable: 1
+            case .noPlan, .unreadableReply: 0
+            }
+        }
+        return failures.max { rank($0) < rank($1) } ?? .unreachable
     }
 
     private func get(_ path: String, cookie: String) async throws -> Data {
@@ -188,7 +242,14 @@ struct XiaomiMiMoClient: Sendable {
 
     static func parsePlan(detail: Data?, usage: Data?) -> XiaomiMiMoSnapshot.Plan? {
         let decoder = JSONDecoder()
-        let usagePayload = usage.flatMap { try? decoder.decode(PlanUsage.self, from: $0) }
+        // **The envelope first, as `parseBalance` does.** The platform answers
+        // over HTTP 200 whatever happened, so a body whose `code` is not zero
+        // is a failure wearing a success's clothes. Read without this, a
+        // `code` 500 carrying an empty `items` came out as "no Coding Plan on
+        // this account" — a fault reported as a subscription.
+        let usagePayload = usage
+            .flatMap { try? decoder.decode(PlanUsage.self, from: $0) }
+            .flatMap { $0.code == 0 ? $0 : nil }
         // `monthUsage.items` is a list because the console draws a row per
         // bucket; the plan's own allowance is the first. An empty list is an
         // account with no plan, which is why this returns nil rather than a
@@ -197,7 +258,9 @@ struct XiaomiMiMoClient: Sendable {
             return nil
         }
 
-        let detailPayload = detail.flatMap { try? decoder.decode(PlanDetail.self, from: $0) }?.data
+        let detailPayload = detail
+            .flatMap { try? decoder.decode(PlanDetail.self, from: $0) }
+            .flatMap { $0.code == 0 ? $0 : nil }?.data
         // An expired plan reports last month's numbers until it is renewed.
         // Those are not a current allowance, so they are not drawn.
         if detailPayload?.expired == true { return nil }
@@ -309,6 +372,7 @@ struct XiaomiMiMoUsageService: Sendable {
             case .rateLimited: .rateLimited
             case .serverError: .serverError
             case .unreadableReply: .unreadableReply
+            case .unreachable: .unreachable
             }
             return .unavailable(.xiaomiMiMo, reason: reason)
         } catch {

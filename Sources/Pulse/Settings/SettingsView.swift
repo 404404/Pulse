@@ -988,15 +988,27 @@ struct SettingsView: View {
             // that decides what leaves the browser — a shared one that kept
             // everything it found would forward whichever cookie either site
             // adds next.
+            //
+            // **Exhaustive, no `default`.** A fall-through would hand the next
+            // provider added Ollama's host and Ollama's filter, and it would
+            // find nothing and say so in that provider's own pane — the
+            // failure `Provider.soleRoute` was made exhaustive to prevent,
+            // where Grok's pane described Antigravity's language server.
             let host: String
             let keep: @Sendable (String) -> String?
             switch account.provider {
+            case .ollamaCloud:
+                host = "ollama.com"
+                keep = { try? OllamaSessionCookie.normalize($0) }
             case .xiaomiMiMo:
                 host = XiaomiMiMoClient.host
                 keep = { try? XiaomiMiMoCookie.normalize($0) }
-            default:
-                host = "ollama.com"
-                keep = { try? OllamaSessionCookie.normalize($0) }
+            case .claudeCode, .codex, .antigravity, .cursor, .openCodeGo,
+                 .kimiCode, .zai, .glmCoding, .minimax, .minimaxCN, .copilot,
+                 .grok, .grokBot, .volcengine, .commandCode, .deepSeek, .devin:
+                // Not session-based: `readSession` sends those to
+                // `readBrowserStorage` before it gets here.
+                return
             }
 
             let found = await Task.detached(priority: .userInitiated) {
@@ -1017,9 +1029,15 @@ struct SettingsView: View {
             }
 
             if pane == .account(account) {
-                sessionMessage = account.provider == .xiaomiMiMo
-                    ? String.localized("No Xiaomi session found. Sign in at platform.xiaomimimo.com first.")
-                    : String.localized("No Ollama session found. Sign in at ollama.com first.")
+                // Named per provider for the same reason the switch above is
+                // exhaustive: a shared sentence would send somebody to the
+                // wrong site.
+                sessionMessage = switch account.provider {
+                case .xiaomiMiMo:
+                    String.localized("No Xiaomi session found. Sign in at platform.xiaomimimo.com first.")
+                default:
+                    String.localized("No Ollama session found. Sign in at ollama.com first.")
+                }
             }
         }
     }

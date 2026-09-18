@@ -72,6 +72,10 @@ Every route returns `{ "code": …, "message": …, "data": … }` over **HTTP 2
 
 This is the same shape that had Zhipu reporting "the service returned an error" for the commonest mistake there is; see [zai.md](zai.md).
 
+**Every route's outcome is kept, not discarded.** The first version wrapped all three calls in `try?`, which made the whole status-code switch below unreachable: an HTTP 401, a 429 and a 500 all became three nils and came out as "the reply could not be read". Each route now returns a `Result`, and when none of them answers the most actionable failure wins — a refused session outranks a timeout, because that is the one with a remedy. A transport failure is `.unreachable`, not `.unreadableReply`; the second means something came back.
+
+The envelope is checked on **both** plan routes as well as on the balance, for the same reason. Read without it, a `code` 500 carrying an empty `items` came out as `.xiaomiNoCodingPlan` — a server fault reported as a subscription, and one `UsageAlerts` would then treat as an answer that clears an outage.
+
 On the wire, `3xx` and `401`/`403` are all read as an expired session — an expired login is answered by redirecting the API call at the sign-in flow, so a redirect here is a credential problem rather than a moved endpoint.
 
 ## What the rail is told
