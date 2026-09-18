@@ -546,13 +546,13 @@ struct FloatingUsagePanelView: View {
         // full extent would hold the panel open across sixty points of empty
         // space it isn't drawing in.
         if !isExpanded {
-            let strip = PanelHitArea
+            return PanelHitArea
                 .strip(edge: edge, railSize: railSize, railTop: railTop, railLeading: railLeading)
-            return PanelHitArea.contains(strip, point)
+                .contains(point)
         }
 
         let rail = PanelHitArea.rail(edge: edge, railSize: railSize, railTop: railTop, railLeading: railLeading)
-        if PanelHitArea.contains(rail, point) { return true }
+        if rail.contains(point) { return true }
 
         guard let index = selectedIndex else { return false }
 
@@ -567,7 +567,7 @@ struct FloatingUsagePanelView: View {
         let band = edge.isVertical
             ? CGRect(x: 0, y: start, width: panel.width, height: length)
             : CGRect(x: start, y: 0, width: length, height: panel.height)
-        return PanelHitArea.contains(band, point)
+        return band.contains(point)
     }
 
     /// Closes the details once the pointer is off the panel entirely.
@@ -599,22 +599,6 @@ enum PanelHitArea {
     static let slack: CGFloat = 8
 
     /// The rail's rectangle inside the panel, in the panel's top-left space.
-    /// Containment that includes the boundary, which `CGRect.contains` does
-    /// not: it is exclusive at `maxX` and `maxY`.
-    ///
-    /// **A docked panel's outer edge is the screen's outer edge.** Docked
-    /// right, the window's right edge lands exactly on `visibleFrame.maxX`,
-    /// and so does the rail's — so the pointer in the last pixel column, which
-    /// is as far as it can go and is visibly *on* the rail, reads as off it.
-    /// The rail then wound itself shut under a pointer resting on it, and on
-    /// the sliver it shut and the tracking area reopened it, which is the
-    /// flicker. Half-open geometry is right for tiling and wrong for asking
-    /// "is the pointer on this".
-    static func contains(_ rect: CGRect, _ point: CGPoint) -> Bool {
-        point.x >= rect.minX && point.x <= rect.maxX
-            && point.y >= rect.minY && point.y <= rect.maxY
-    }
-
     static func rail(edge: PanelEdge, railSize: CGSize, railTop: CGFloat, railLeading: CGFloat) -> CGRect {
         let panel = FloatingPanelController.Layout.size(for: edge)
         let x: CGFloat = switch edge {
