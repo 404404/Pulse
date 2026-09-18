@@ -719,7 +719,12 @@ struct BotMarkTests {
             var time = 0.0
             var outside = 0
             var total = 0
-            while time < 240 {
+            // Ten minutes, not four. The share is a frame count over random
+            // glances, and at four minutes the spread put a fixed rail at 4.0%
+            // against a threshold of 4 — the bound was fine and the sample was
+            // not. A longer run separates ~3% fixed from ~5-13% broken with
+            // room to spare.
+            while time < 600 {
                 time += 1.0 / 30
                 let frame = engine.advance(to: time, programme: programme)
                 guard frame.morphAmount < 0.01, frame.eyes.count == 2,

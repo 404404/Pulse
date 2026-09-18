@@ -295,4 +295,57 @@ struct RailOffsetTests {
         #expect(offsets.leading >= 0)
         #expect(offsets.leading <= max(tiny.width - rail.width, 0))
     }
+    /// The pointer in the last pixel column is on the rail, not off it.
+    ///
+    /// A docked panel's outer edge lands exactly on the screen's: docked
+    /// right, the window's right edge, the rail's right edge and
+    /// `visibleFrame.maxX` are one number. So the furthest the pointer can
+    /// travel is exactly `maxX` — and `CGRect.contains` is exclusive there, so
+    /// that point read as off the panel. The rail wound shut under a pointer
+    /// resting on it; on the sliver it shut and the tracking area reopened it,
+    /// which is the flicker.
+    @Test("A point on the outer edge counts as inside")
+    func edgeOfTheRailIsInsideIt() {
+        for edge in [PanelEdge.left, .right, .top] {
+            let size = DockLayout.size(for: 4, on: edge.axis, docked: true)
+            let rail = PanelHitArea.rail(edge: edge, railSize: size, railTop: 0, railLeading: 0)
+
+            for corner in [CGPoint(x: rail.minX, y: rail.minY),
+                           CGPoint(x: rail.maxX, y: rail.minY),
+                           CGPoint(x: rail.minX, y: rail.maxY),
+                           CGPoint(x: rail.maxX, y: rail.maxY)] {
+                #expect(PanelHitArea.contains(rail, corner),
+                        "\(edge) rail does not contain its own corner \(corner)")
+            }
+        }
+    }
+
+    /// And the sliver's, which is the half of it that flickered: the strip is
+    /// drawn hard against the same edge.
+    @Test("A point on the sliver's outer edge counts as inside")
+    func edgeOfTheStripIsInsideIt() {
+        for edge in [PanelEdge.left, .right, .top] {
+            let size = DockLayout.size(for: 4, on: edge.axis, docked: true)
+            let strip = PanelHitArea.strip(edge: edge, railSize: size, railTop: 0, railLeading: 0)
+            let outer: CGPoint = switch edge {
+            case .left: CGPoint(x: strip.minX, y: strip.midY)
+            case .right: CGPoint(x: strip.maxX, y: strip.midY)
+            case .top: CGPoint(x: strip.midX, y: strip.minY)
+            }
+            #expect(PanelHitArea.contains(strip, outer),
+                    "\(edge) sliver does not contain the edge it is drawn against")
+        }
+    }
+
+    /// Inclusive on the boundary is not inclusive of everything: a point past
+    /// it is still outside, or the rail would never wind down at all.
+    @Test("A point past the edge is still outside")
+    func pastTheEdgeIsOutside() {
+        let rect = CGRect(x: 10, y: 20, width: 30, height: 40)
+        #expect(PanelHitArea.contains(rect, CGPoint(x: 40, y: 60)))
+        #expect(!PanelHitArea.contains(rect, CGPoint(x: 40.5, y: 60)))
+        #expect(!PanelHitArea.contains(rect, CGPoint(x: 40, y: 60.5)))
+        #expect(!PanelHitArea.contains(rect, CGPoint(x: 9.5, y: 40)))
+    }
+
 }

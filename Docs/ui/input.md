@@ -17,6 +17,8 @@ Two `NSViewRepresentable` backgrounds:
 
 The sliver’s tracking area cannot be the only way `isHovered` gets set: a floating panel dragged onto an edge docks with `isHovered` still false and snaps shut in the hand. `pointerMoved` sets it from the same test that decides when to hide.
 
+**The pointer tests include their boundary.** `CGRect.contains` is half-open — exclusive at `maxX` and `maxY` — and a docked panel's outer edge *is* the screen's: docked right, the window's right edge, the rail's right edge and `visibleFrame.maxX` are one number. So the pointer in the last pixel column, which is as far as it can travel and is visibly on the rail, read as off it. `PanelPointerWatcher` reported nil, `isOverContent` said false, and the rail wound shut under a pointer resting on it; on the sliver it wound shut and the tracking area reopened it, which is the flicker. `PanelHitArea.contains(_:_:)` is the inclusive test both now use, and `RailGeometryTests` pins that a rail and a sliver contain their own outer edge — and that a point past it is still outside, or nothing would ever wind down.
+
 `PanelHitArea.stripIsContainedInRail()` asserts the sliver never pokes outside the rail’s hit area (or leave-rail lands on the sliver, which shows the rail, which hides it). Bound is rail capacity / slots, not `Provider.allCases.count`. Run from `FloatingPanelController.init` once metrics are settled.
 
 ## Drag belongs to the window

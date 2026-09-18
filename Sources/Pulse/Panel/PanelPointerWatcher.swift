@@ -76,7 +76,12 @@ struct PanelPointerWatcher: NSViewRepresentable {
 
             let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
             let local = convert(inWindow, from: nil)
-            let point = bounds.contains(local) ? local : nil
+            // **Inclusive of the boundary.** A docked panel's outer edge is
+            // the screen's, so the pointer in the last pixel column is exactly
+            // on `bounds.maxX` — as far as it can travel, and visibly on the
+            // rail. `CGRect.contains` excludes that edge, so this reported nil
+            // and the rail wound shut under a pointer resting on it.
+            let point = PanelHitArea.contains(bounds, local) ? local : nil
 
             // Only speak up when something actually changed, so a resting
             // pointer doesn't churn SwiftUI state six times a second.
