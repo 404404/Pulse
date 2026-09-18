@@ -1234,6 +1234,8 @@ final class BotMarkEngine {
             }
         }
         let centres = eyeRings.map(BotMarkGeometry.centroid)
+        // Where the expression itself is looking, before anything is added.
+        let pairOffset = (centres[0].x + centres[1].x) / 2 - headCentre
         var scanTop = top
         var scanBottom = bottom
         if abs(turnAngle) > 0.001 {
@@ -1310,6 +1312,19 @@ final class BotMarkEngine {
             // turning the badge would have it staring past the thing.
             driftX = (driftX + aimX.value * autonomousGazeWeight + directGazeX
                       + config.gazeBias) * facingValue + pointerX
+
+            // **The gaze rides inside the face; it does not push past it.**
+            // The expression is already looking somewhere — up to `eyeReach`
+            // off the head's centre — and the lean, the state's glance and
+            // the pointer are all added on top. Stacked the same way they put
+            // an eye outside the silhouette, where it is simply clipped: on a
+            // 25pt ring that reads as a mark with one eye missing, which is
+            // what it looked like. So the boldest thing the artwork itself
+            // does is the ceiling for the total, and anything Pulse adds has
+            // to fit under it. Moving back toward the middle is never
+            // restricted — only leaving the face is.
+            let reach = library.eyeReach
+            driftX = BotMath.clamp(pairOffset + driftX, -reach, reach) - pairOffset
             driftY += pointerY + aimY.value * autonomousGazeWeight + directGazeY
             let notification = BotMath.clamp(notify.value, 0, 1)
             driftX -= 10 * notification
