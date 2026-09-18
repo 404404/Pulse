@@ -244,10 +244,10 @@ struct BotMarkTests {
                 time += 1.0 / 60
                 frame = engine.advance(to: time, programme: programme)
             }
-            // Both eyes, so a wink or a blink cannot tilt the reading, and in
-            // screen space, because the mirror is half of what aims the mark.
-            let engineSpace = frame.eyes.map { Double($0.transform.tx) }.reduce(0, +) / 2
-            return gaze.mirrored ? -engineSpace : engineSpace
+            // Both eyes, so a wink or a blink cannot tilt the reading. No
+            // correction for the turn: it is applied to where the eyes were
+            // put, so what is read here is already what is drawn.
+            return frame.eyes.map { Double($0.transform.tx) }.reduce(0, +) / 2
         }
 
         let ahead = eyeCentre(.ahead)
@@ -290,8 +290,7 @@ struct BotMarkTests {
                     guard let path = eye.path.copy(using: &transform) else { return 0 }
                     sum += Double(path.boundingBoxOfPath.midX)
                 }
-                // Screen space: the mirror turns the engine's own x around.
-                samples.append((sum / 2 - Double(centre)) * (gaze.mirrored ? -1 : 1))
+                samples.append(sum / 2 - Double(centre))
             }
             return samples.reduce(0, +) / Double(samples.count)
         }
@@ -341,11 +340,73 @@ struct BotMarkTests {
         let turn = frames(flipped: true, from: moved, start: 1, seconds: 1)
         #expect(turn.first! > 0.9, "the turn did not start from where the mark was")
         #expect(turn.last! < -0.9, "the mark never finished turning")
-        // Edge-on somewhere in the middle, which is what makes it a turn.
+        // Straight ahead somewhere in the middle, which is what makes it a
+        // look across rather than a jump.
         #expect(turn.contains { abs($0) < 0.3 }, "the mark swapped sides without passing through")
         // And it takes a moment: an instant flip would clear 0.3 in one frame.
         let crossing = turn.filter { abs($0) < 0.9 }.count
         #expect(crossing >= 6, "the turn took \(crossing) frames — too fast to read as motion")
+    }
+
+    /// The eyes look across; the body stays where it is.
+    ///
+    /// This is the shape of the first attempt's mistake, written down. Turning
+    /// the mark round was done by mirroring the whole drawing, which aimed the
+    /// eyes correctly and flipped the body over like a card — the right answer
+    /// to the wrong question. A rail being dragged from one edge to the other
+    /// should look like a character glancing over, so the eyes have to move
+    /// and the body has to not.
+    @Test("Turning moves the eyes and leaves the body alone")
+    func turningMovesOnlyTheEyes() {
+        func sample(flipped: Bool, from engine: BotMarkEngine,
+                    start: Double, seconds: Double) -> [(eyes: Double, body: CGAffineTransform)] {
+            var programme = BotMarkProgramme(states: ["bored"])
+            programme.flipX = flipped
+            var time = start
+            var out: [(Double, CGAffineTransform)] = []
+            while time < start + seconds {
+                let frame = engine.advance(to: time, programme: programme)
+                if frame.eyes.count == 2 {
+                    // Where the eyes are actually drawn, not their transform's
+                    // translation: the reflection moves each ring's own centroid,
+                    // which that translation cancels against.
+                    var sum = 0.0
+                    for eye in frame.eyes {
+                        var transform = eye.transform.concatenating(frame.transform)
+                        guard let path = eye.path.copy(using: &transform) else { continue }
+                        sum += Double(path.boundingBoxOfPath.midX)
+                    }
+                    let centre = CGPoint(x: BotMarkFrame.viewBoxCentre,
+                                         y: BotMarkFrame.viewBoxCentre)
+                        .applying(frame.transform).x
+                    out.append((sum / 2 - Double(centre), frame.transform))
+                }
+                time += 1.0 / 60
+            }
+            return out
+        }
+
+        let engine = BotMarkEngine()
+        let before = sample(flipped: false, from: engine, start: 0, seconds: 4)
+        let after = sample(flipped: true, from: engine, start: 4, seconds: 4)
+
+        // `bored` is one of the expressions drawn well off to one side, which
+        // is exactly the case the mirror exists for.
+        let settledBefore = before.suffix(30).map(\.eyes).reduce(0, +) / 30
+        let settledAfter = after.suffix(30).map(\.eyes).reduce(0, +) / 30
+        #expect(settledBefore > 0, "the sideways expression was not looking right to begin with")
+        #expect(settledAfter < 0, "the eyes never came across")
+
+        // The body is never mirrored and never jumps. Its horizontal scale
+        // stays positive throughout — a mirror would send it through zero to
+        // -1 — and it moves no further across the turn than it does at rest.
+        #expect(after.allSatisfy { $0.body.a > 0 }, "the body was mirrored")
+        func travel(_ frames: [(eyes: Double, body: CGAffineTransform)]) -> Double {
+            let xs = frames.map { Double($0.body.tx) }
+            return (xs.max() ?? 0) - (xs.min() ?? 0)
+        }
+        #expect(travel(after) <= travel(before) + 1,
+                "the body moved \(travel(after)) across the turn against \(travel(before)) at rest")
     }
 
     /// Which way each edge looks. A rail on the right edge of the screen has
