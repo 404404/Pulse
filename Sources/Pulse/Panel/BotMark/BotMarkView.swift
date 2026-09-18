@@ -12,10 +12,14 @@ func drawBotMark(_ frame: BotMarkFrame, config: BotMarkConfig,
     let origin = BotMarkFrame.viewBoxCentre - frame.viewBoxRadius
     var base = CGAffineTransform(scaleX: scale, y: scale)
         .translatedBy(x: -origin, y: -origin)
-    if frame.flipX {
+    // Which way round the mark faces, and — while it is changing — how far
+    // through the turn it is. Scaling the whole `base` means the body, its
+    // eyes, its badge and its particles all come round together; anything
+    // mirrored separately would swim against the rest mid-turn.
+    if frame.facing < 1 {
         base = base.concatenating(
             CGAffineTransform(translationX: extent / 2, y: 0)
-                .scaledBy(x: -1, y: 1)
+                .scaledBy(x: frame.facing, y: 1)
                 .translatedBy(x: -extent / 2, y: 0))
     }
 

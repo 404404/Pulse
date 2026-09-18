@@ -34,6 +34,15 @@ final class BotMarkEngine {
     // MARK: Springs
 
     private var rotation = BotMarkSpring(0)
+    /// Which way round the mark is drawn: +1 as the engine works, -1
+    /// mirrored. A spring rather than the boolean it comes from, so dragging
+    /// the rail to the other edge turns the character round instead of
+    /// swapping it for its own reflection between one frame and the next.
+    ///
+    /// Nil until the first frame, and set to the target outright there: a
+    /// mark that animated its flip on appear would spin every time the panel
+    /// opened. Only a *change* of edge is worth a turn.
+    private var facing: BotMarkSpring?
     private var headX = BotMarkSpring(0)
     private var headY = BotMarkSpring(0)
     private var scaleY = BotMarkSpring(1)
@@ -218,6 +227,7 @@ final class BotMarkEngine {
 
         pointer = programme.pointer
         let config = step(programme: programme)
+        aimFacing(at: config.flipX ? -1 : 1)
         updateMorph(now: clockTime, config: config)
         updateStateTargets(now: clockTime, config: config)
         stepPhysics(delta: delta)
@@ -364,12 +374,41 @@ final class BotMarkEngine {
         }
     }
 
+    /// Point the mark the way the rail wants it.
+    ///
+    /// The first frame snaps, every later one springs: see `facing`.
+    private func aimFacing(at target: Double) {
+        if facing == nil {
+            facing = BotMarkSpring(target)
+        } else {
+            facing?.target = target
+        }
+    }
+
+    /// The horizontal scale the whole mark is drawn through.
+    ///
+    /// Floored away from zero. Mid-turn the body passes edge-on, and at
+    /// exactly zero the transform is singular — a path scaled flat has no
+    /// bounding box worth the name and the eye clamp divides by its width.
+    /// Two hundredths is far narrower than one pixel at ring size, so the
+    /// turn still reads as passing through nothing.
+    private var facingValue: Double {
+        let value = facing?.value ?? 1
+        return abs(value) < 0.02 ? (value < 0 ? -0.02 : 0.02) : value
+    }
+
     private func stepPhysics(delta: Double) {
         let steps = max(1, Int((delta / BotMath.fixedStep).rounded(.up)))
         let step = delta / Double(steps)
         for _ in 0..<steps {
             expressionSpring.step(frequency: expressionFrequency, damping: 1, delta: step)
             rotation.step(frequency: 5, damping: 0.9, delta: step)
+            // 9 is a turn of about a third of a second at this damping —
+            // long enough to read as the body coming round, short enough that
+            // a drag across the screen does not leave a mark still turning
+            // after the rail has settled. Slightly under-damped, so it
+            // arrives with a small overshoot rather than easing to a halt.
+            facing?.step(frequency: 9, damping: 0.85, delta: step)
             headX.step(frequency: 3.5, damping: 1, delta: step)
             headY.step(frequency: 4, damping: 1, delta: step)
             scaleY.step(frequency: 10, damping: 0.8, delta: step)
@@ -1152,7 +1191,7 @@ final class BotMarkEngine {
         return BotMarkFrame(headPath: headPath, transform: transform, opacity: pose.opacity,
                         eyes: eyes, badge: badge, shapes: shapes,
                         viewBoxRadius: viewBoxRadius, morphAmount: morphAmount,
-                        flipX: config.flipX)
+                        facing: facingValue)
     }
 
     private func renderEyes(now: Double, config: BotMarkConfig, shape: BotMarkShape,
@@ -1182,7 +1221,9 @@ final class BotMarkEngine {
             : 4
 
         if config.pointer, let pointer {
-            let flip = config.flipX ? -1.0 : 1.0
+            // The live value, not the boolean: while the body is coming
+            // round, the pointer it is tracking has to come round with it.
+            let flip = facingValue
             pointerTargetX = 22 * BotMath.clamp(pointer.x, -0.6, 0.6) * flip
             pointerTargetY = 14 * BotMath.clamp(pointer.y, -0.6, 0.6)
         } else {
@@ -1343,7 +1384,9 @@ struct BotMarkFrame {
     /// but a measurement of the body's size has to know, because a morph
     /// shrinks the character to a fifth on purpose and that is not a squash.
     var morphAmount: Double
-    var flipX: Bool
+    /// -1…+1: the horizontal scale the whole mark is drawn through, so a
+    /// change of edge is a turn rather than a swap. ±1 at rest.
+    var facing: Double
 
     /// The centre of the upstream viewBox, `-15 -15 259 259`.
     static let viewBoxCentre = 114.5
