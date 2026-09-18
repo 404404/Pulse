@@ -7,6 +7,42 @@ shows in the update window — see [Scripts/changelog.py](Scripts/changelog.py).
 Add the entry **before** tagging, in the small grammar the converter knows:
 bullets, `**bold**`, `` `code` `` and `[links](https://example.com)`.
 
+## 1.2.1
+
+**中文**
+
+**修复**
+
+- **修复 Codex 会让 CPU 空转的问题。** `codex app-server` 退出后，Pulse 还在读它那根已经关掉的管道。这种管道永远"可读"，所以读取回调会被不停地重复调用——一个核跑满，直到退出 Pulse 为止。而且 helper 每重启一次就多留下一条空转线程。感谢 [@ethan-ji](https://github.com/qunqin24/Pulse/issues/25) 把原因、堆栈和条件都查清楚了。
+
+**新功能**
+
+- **小米 Coding Plan 成为第十九个服务商。** 读取小米 MiMo 控制台上按月购买的 token 额度，有周期结束时间就一并显示，预付余额作为一行金额附在卡片上。凭据是浏览器里已登录的会话，不是 API key——平台发的 key 是买推理用的，控制台的账户接口一个都不认。账号上没有 Coding Plan 时会直说，而不是画一个 0%。
+- **更新检查改为每两小时一次**，原本是一天一次。仍然只提示，不会自己安装。
+
+**改进**
+
+- **小机器人现在会看向屏幕里侧。** 胶囊贴在右边时看左边，贴在左边时看右边，拖到另一边会把视线挪过去而不是瞬间跳过去。之前那个偏移量比表情自带的朝向小得多，所以大部分时候还是在盯着屏幕边框。鼠标在面板上时，它优先看鼠标。
+- **小机器人的眼睛不会再跑出脸外。** 表情自带的朝向、贴边偏移和随机瞥视叠加起来会把眼睛推出轮廓，被裁掉之后看上去像少了一只眼。
+- **重写设置里小机器人相关的中文文案。** 之前是照着英文直译的。
+
+**English**
+
+**Fixed**
+
+- **Codex no longer spins the CPU.** After `codex app-server` exits, Pulse went on reading its closed pipe. A pipe in that state is readable for ever, so the read callback was called again and again — one core, flat out, until Pulse was quit — and every restart of the helper left another spinning thread behind. Reported by [@ethan-ji](https://github.com/qunqin24/Pulse/issues/25), with the cause, the stack and the conditions already worked out.
+
+**New**
+
+- **Xiaomi Coding Plan is the nineteenth provider.** Reads the monthly token allowance bought on Xiaomi's MiMo console, with the period's end where it reports one, and the prepaid balance as a line on the card. The credential is your signed-in browser session rather than an API key — the platform's keys buy inference and answer none of the console's account routes. An account with no plan says so instead of drawing 0%.
+- **Updates are checked every two hours** rather than once a day. Still offered, never installed on their own.
+
+**Changed**
+
+- **The bot now faces into the screen.** A rail docked right looks left, docked left looks right, and dragging it across sends the eyes over rather than snapping them. The old lean was far smaller than the glance drawn into each expression, so a mark spent much of its time staring at the screen edge. A pointer on the panel outranks all of it.
+- **The bot's eyes stay inside its face.** The expression's own glance, the edge lean and the random glances stacked up and pushed an eye past the silhouette, where it was clipped — which read as a mark with one eye.
+- **Rewrote the Chinese copy for the bot settings**, which had been translated word by word from the English.
+
 ## 1.2.0
 
 **中文**
