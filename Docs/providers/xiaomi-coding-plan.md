@@ -17,6 +17,20 @@ Xiaomi's MiMo open platform, read through the console's own account routes.
 
 It is the longest name on the rail at eighteen characters, four past "GitHub Copilot", which is what the Settings sidebar was previously sized to. See [`../ui/settings.md`](../ui/settings.md).
 
+## One row, not two
+
+**Asked and answered: this is not another MiniMax.** Two providers on the rail are split into a mainland row and an international one — MiniMax / MiniMax CN, and z.ai / Zhipu — because those really are two storefronts: separate accounts, separate keys, and a key for one refused by the other. That split cost a real bug before it existed (issue #13, an international subscriber's key sent to the mainland service), so the question is worth asking of every Chinese provider added since.
+
+Xiaomi is one storefront:
+
+- The official documentation at `mimo.xiaomi.com`, in **both** its English and its Chinese edition, points the Token Plan at the same `platform.xiaomimimo.com/token-plan`. There is no second console and no region selector.
+- No sibling console host resolves — `platform-sgp.xiaomimimo.com` and a bare `xiaomimimo.com` do not connect at all.
+- CodexBar's own provider carries one host and no region handling.
+
+`token-plan-cn.xiaomimimo.com` and `token-plan-sgp.xiaomimimo.com` both **do** resolve, which is what prompts the question. They are **inference** endpoints — the base URL a CLI wrapper points at, which is how CodexBar's local-usage fallback uses the `sgp` one — not consoles and not account boundaries. One account reaching whichever is nearer is the opposite of the MiniMax case.
+
+Not verified: whether signing up from outside mainland China lands on this same console. Two editions of the vendor's own documentation serving one URL is the evidence there is. If an overseas account turns out to have its own console, this is the page that was wrong, and the remedy is the second row rather than a region switch inside one — see the reasoning under `Provider.displayName` for why.
+
 ## Credential
 
 A browser session for `platform.xiaomimimo.com`, read by [`BrowserCookies`](../../Sources/Pulse/Auth/BrowserCookies.swift) or pasted as a `Cookie:` header — the same two ways in as Ollama's, and the second provider to use that path.
