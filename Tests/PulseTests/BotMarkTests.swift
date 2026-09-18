@@ -738,6 +738,61 @@ struct BotMarkTests {
         }
     }
 
+    /// Somebody pointing at a ring outranks everything the mark would rather
+    /// be looking at.
+    ///
+    /// Two of the three things aiming a mark are much larger than the pointer:
+    /// the expression's built-in glance reaches 76 units and the standing lean
+    /// is 7, against a pointer worth 22. On a rail against the right-hand edge
+    /// they pull the same way, so the mark went on staring left with the
+    /// cursor sitting on its right — which is the opposite of the behaviour
+    /// the pointer exists for. Upstream already damps the state's own glance
+    /// to a fifth while the pointer is on the panel; the lean and the artwork
+    /// now give way in the same measure.
+    ///
+    /// Checked on the hard case: every persona, turned to face the screen, so
+    /// the habits and the pointer disagree.
+    @Test("The pointer outranks the lean and the expression")
+    func pointerWinsOverHabit() {
+        func eyes(_ persona: BotMarkPersona, pointerX: Double) -> Double {
+            var programme = Self.programme(persona, .idle)
+            programme.gazeBias = BotMarkGaze.left.bias
+            programme.flipX = BotMarkGaze.left.mirrored
+            programme.pointer = CGPoint(x: pointerX, y: 0)
+            let engine = BotMarkEngine()
+            var time = 0.0
+            var settled: [Double] = []
+            while time < 30 {
+                time += 1.0 / 30
+                let frame = engine.advance(to: time, programme: programme)
+                guard frame.eyes.count == 2, frame.eyes.allSatisfy({ $0.visible }) else { continue }
+                let centre = CGPoint(x: BotMarkFrame.viewBoxCentre,
+                                     y: BotMarkFrame.viewBoxCentre)
+                    .applying(frame.transform).x
+                var sum = 0.0
+                for eye in frame.eyes {
+                    var transform = eye.transform.concatenating(frame.transform)
+                    guard let path = eye.path.copy(using: &transform) else { return .nan }
+                    sum += Double(path.boundingBoxOfPath.midX)
+                }
+                // Past the first few seconds, so the springs have arrived.
+                if time > 5 { settled.append(sum / 2 - Double(centre)) }
+            }
+            return settled.reduce(0, +) / Double(settled.count)
+        }
+
+        for persona in BotMarkPersona.allCases {
+            let looksLeft = eyes(persona, pointerX: -1)
+            let looksRight = eyes(persona, pointerX: 1)
+            #expect(looksRight > looksLeft + 8,
+                    "\(persona) barely moved: \(looksLeft) with the pointer left, \(looksRight) with it right")
+            // And it is not merely a shift — the eyes end up on the side the
+            // pointer is actually on.
+            #expect(looksLeft < 0, "\(persona) did not look left at a pointer on its left")
+            #expect(looksRight > 0, "\(persona) did not look right at a pointer on its right")
+        }
+    }
+
     /// The programme a ring would hand the engine for this pair, so a test
     /// measures what the rail actually plays.
     private static func programme(_ persona: BotMarkPersona,

@@ -1296,7 +1296,17 @@ final class BotMarkEngine {
             let pulse = 1 + 0.07 * sin(amount * .pi)
             var driftX = 1.4 * sin(0.00042 * now + Double(index)) + 0.5 * sin(0.001 * now + 2 * Double(index))
             var driftY = 0.9 * sin(0.00058 * now + Double(index))
-            let autonomousGazeWeight = config.pointer && pointer != nil ? 0.2 : 1.0
+            // **Somebody pointing at this ring outranks everything else the
+            // mark would rather be looking at.** Upstream already damps the
+            // state's own glance to a fifth while the pointer is on the
+            // panel; the two habits Pulse added have to give way in the same
+            // measure, or they win by sheer size. The standing lean is 7 and
+            // the expression's built-in glance reaches 76, against a pointer
+            // worth 22 — a rail on the right-hand edge kept staring left with
+            // the cursor sitting on its right, which is not watching anything.
+            let watching = config.pointer && pointer != nil
+            let autonomousGazeWeight = watching ? 0.2 : 1.0
+
             // **Only the gaze turns round, not the mark.** Mirroring the
             // whole drawing aimed the eyes correctly and looked absurd: the
             // body flipped over like a card, which is not what a character
@@ -1306,12 +1316,21 @@ final class BotMarkEngine {
             // it is sprung, the eyes travel across rather than jumping.
             //
             // Two terms are deliberately left out. The pointer is a real
-            // place on screen, already added above. And the glance a
-            // `notifying` mark gives its badge is below, because the badge
-            // sits at a fixed point on the body: turning the look without
-            // turning the badge would have it staring past the thing.
+            // place on screen, so it is added after the turn rather than
+            // through it. And the glance a `notifying` mark gives its badge
+            // is below, because the badge sits at a fixed point on the body:
+            // turning the look without turning the badge would have it
+            // staring past the thing.
             driftX = (driftX + aimX.value * autonomousGazeWeight + directGazeX
-                      + config.gazeBias) * facingValue + pointerX
+                      + config.gazeBias * autonomousGazeWeight) * facingValue
+
+            // The expression's own glance is in the artwork rather than in a
+            // number, so the only way to let it give way is to take it back
+            // out. Most of it, not all: a `sad` mark being pointed at should
+            // still look sad, and straightening the pair completely would
+            // make every expression's eyes sit in the same place.
+            driftX -= pairOffset * (1 - autonomousGazeWeight)
+            driftX += pointerX
 
             // **The gaze rides inside the face; it does not push past it.**
             // The expression is already looking somewhere — up to `eyeReach`
