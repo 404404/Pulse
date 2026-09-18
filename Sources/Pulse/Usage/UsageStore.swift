@@ -625,6 +625,7 @@ final class UsageStore {
         let openCode = OpenCodeGoUsageService(enteredKey: key)
         let kimi = KimiCodeUsageService(enteredKey: key)
         let ollama = OllamaCloudUsageService(cookie: key)
+        let xiaomi = XiaomiMiMoUsageService(cookie: key)
         let zai = ZaiUsageService(provider: provider, enteredKey: key)
         let minimax = MiniMaxUsageService(provider: provider, enteredKey: key)
         let volcengine = VolcengineUsageService(enteredKey: key)
@@ -678,6 +679,8 @@ final class UsageStore {
                 raw = await deepSeek.fetch()
             case .devin:
                 raw = await devinAccount.fetch(source: source)
+            case .xiaomiMiMo:
+                raw = await xiaomi.fetch()
             }
             }
 
@@ -750,7 +753,7 @@ final class UsageStore {
         // Nothing else can be signed in to, so nothing else gets here.
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
-             .commandCode, .deepSeek, .devin:
+             .commandCode, .deepSeek, .devin, .xiaomiMiMo:
             .unavailable(account, reason: .loading)
         }
     }

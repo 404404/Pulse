@@ -1,0 +1,75 @@
+# Xiaomi Coding Plan
+
+Xiaomi's MiMo open platform, read through the console's own account routes.
+
+**Nothing here is a runtime test against a live account.** The routes, the envelope and the cookie names were read off [CodexBar](https://github.com/steipete/CodexBar)'s own implementation and its `docs/mimo.md`, which is where this provider came from; the parsing is pinned by fixtures written to that contract, not captured from a real reply. A live account will settle the parts marked below.
+
+## Place in Pulse
+
+- `Provider.xiaomiMiMo`. Icon `xiaomimimo`. Extra accounts: no. Transcripts: no. Spending history: no.
+- First run: never offered. `canReportWithoutSetup` is false until a session is stored, and a browser on this Mac is no evidence of an account — the same rule that keeps Kimi Code and DeepSeek out of a fresh rail.
+- `usesAPIKey` is true so Settings draws a credential row; `usesSessionCookie` is true so that row is a **browser session** rather than an API-key paste. The second one is the point: the platform *does* issue API keys, and they buy inference. None of them answers the console routes below.
+- Service: [`XiaomiMiMoUsageService.swift`](../../Sources/Pulse/Providers/XiaomiMiMoUsageService.swift). Tests: `XiaomiMiMoTests`, fixtures `Tests/PulseTests/Fixtures/xiaomi-*.json`.
+
+## The name
+
+**"Xiaomi Coding Plan", not "Xiaomi MiMo".** The platform sells two different things on one account: inference by the yuan to anyone with a key, and a monthly token allowance bought on top of that. Only the second has a denominator, so only the second can be a ring — and naming the row for the platform would have it stand for both. CodexBar calls its equivalent "Xiaomi MiMo" because it leads with the balance; this one leads with the plan.
+
+It is the longest name on the rail at eighteen characters, four past "GitHub Copilot", which is what the Settings sidebar was previously sized to. See [`../ui/settings.md`](../ui/settings.md).
+
+## Credential
+
+A browser session for `platform.xiaomimimo.com`, read by [`BrowserCookies`](../../Sources/Pulse/Auth/BrowserCookies.swift) or pasted as a `Cookie:` header — the same two ways in as Ollama's, and the second provider to use that path.
+
+`XiaomiMiMoCookie` keeps **only** these names and discards the rest of the store:
+
+| Cookie | |
+|---|---|
+| `api-platform_serviceToken` | required |
+| `userId` | required |
+| `api-platform_ph` | sent when present |
+| `api-platform_slh` | sent when present |
+
+Both required names or the header is refused before a request is made. Everything else a browser holds for that host — analytics, preferences, whatever the site adds next — never leaves the process. Values are checked rather than trusted: a control character anywhere in the header is refused outright, because a value carrying a newline is a header injection.
+
+A repeated name takes the first and is **not** an error. Every browser store routinely holds a host-only row and a domain row for one cookie, and the host match returns both; throwing there discarded the whole browser in silence. That lesson is Ollama's, written down in `OllamaSessionCookie.normalize` and repeated here because the shape of the mistake is the shape of this whole feature.
+
+Safari's store needs Full Disk Access; the Chromium browsers ask for keychain permission once. Both are properties of reading a browser, not of this provider — [authentication.md](authentication.md).
+
+## Routes
+
+`GET https://platform.xiaomimimo.com/api/v1/…`, three of them, fetched together:
+
+| Path | Carries |
+|---|---|
+| `tokenPlan/usage` | `data.monthUsage.items[]` — `used`, `limit` per bucket |
+| `tokenPlan/detail` | `data.planCode`, `data.currentPeriodEnd`, `data.expired` |
+| `balance` | `data.balance` and `data.currency`, as strings |
+
+**The plan's failure is the call's failure; the balance's is one line on the card.** The ring comes from `tokenPlan/usage`, so a usage route that does not answer is an unavailable provider. The balance is money on the card and nothing else depends on it, so losing it costs that line. `tokenPlan/detail` is in between: it carries the reset and the plan's name, and without it the row still draws with neither.
+
+`monthUsage.items` is a list because the console draws a row per bucket. The plan's own allowance is the first, and an **empty list is an account with no plan** — one that buys tokens by the yuan. That is a complete answer (`.xiaomiNoCodingPlan`), not a fault, and it is reported rather than drawn as 0%, which would read as a full month nobody has. `zaiNoCodingPlan` exists for exactly the same reason.
+
+An `expired` plan keeps reporting last month's figures until it renews. Those are not a current allowance, so nothing is drawn.
+
+## The envelope answers inside a 200
+
+Every route returns `{ "code": …, "message": …, "data": … }` over **HTTP 200**, including when the session is refused: `code` 401 or 403 in the body with a 200 on the wire. So the body is read on every route, not just on the one that failed — read as a success, a refused session comes out as "no Coding Plan on this account", which sends somebody to look at their subscription instead of at their login.
+
+This is the same shape that had Zhipu reporting "the service returned an error" for the commonest mistake there is; see [zai.md](zai.md).
+
+On the wire, `3xx` and `401`/`403` are all read as an expired session — an expired login is answered by redirecting the API call at the sign-in flow, so a redirect here is a credential problem rather than a moved endpoint.
+
+## What the rail is told
+
+One window, `kind: .monthly`, `id` `xiaomi.plan`.
+
+`windowSeconds` is thirty days and **`reportsLength` is false**. The platform states when the period ends and never how long it is, and a billing month is not a fixed number of seconds — so the length is a sort key, the window-clock arc is not drawn, and the forecast does not divide by it. Copilot's calendar month is carried the same way; see the `windowSeconds` section of [README.md](README.md).
+
+The balance rides along as `creditBalance`, a formatted string. **Not `creditRemaining`**, which is the number-and-currency pair the "warn below" line is built on: there is no allowance to compare a prepaid balance against here, so `reportsSpendableBalance` stays false and no low-balance alert is offered. DeepSeek and Command Code are the two that do offer one, and both of them have a denominator of some kind.
+
+## Unconfirmed
+
+- **The bucket.** `monthUsage.items.first` is taken as the plan's allowance. On an account whose console shows several buckets, the first may not be the one the plan is sold as.
+- **The currency.** `balance.currency` is fed to `NumberFormatter` as an ISO code. If the platform returns `¥` or `RMB` rather than `CNY`, the card prints the number with no symbol.
+- **`planCode`.** Shown as the plan's name. Whether it is a human-readable name or an internal code is not known from the contract.

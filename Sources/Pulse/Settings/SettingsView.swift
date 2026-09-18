@@ -174,7 +174,7 @@ struct SettingsView: View {
             // do. `ideal` matches the frame so first layout and every rebuild
             // land on the same width; `max` keeps a stretched sidebar from
             // eating the pane.
-            .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 320)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
             // `.sidebar`, not `.automatic`: this window has no `NSToolbar` —
             // see `SettingsWindowController` on why the title bar is left to
             // AppKit — and automatic placement has nowhere to put the field.
@@ -983,10 +983,24 @@ struct SettingsView: View {
             // Off the main thread: this opens a database or two and may ask
             // the keychain, and the settings window should not freeze while it
             // does.
+            // **Which site, and which cookies of it are worth keeping.** Two
+            // providers read a session now, and the normalizer is the thing
+            // that decides what leaves the browser — a shared one that kept
+            // everything it found would forward whichever cookie either site
+            // adds next.
+            let host: String
+            let keep: @Sendable (String) -> String?
+            switch account.provider {
+            case .xiaomiMiMo:
+                host = XiaomiMiMoClient.host
+                keep = { try? XiaomiMiMoCookie.normalize($0) }
+            default:
+                host = "ollama.com"
+                keep = { try? OllamaSessionCookie.normalize($0) }
+            }
+
             let found = await Task.detached(priority: .userInitiated) {
-                BrowserCookies.session(forHost: "ollama.com", allowing: browsers) {
-                    try? OllamaSessionCookie.normalize($0)
-                }
+                BrowserCookies.session(forHost: host, allowing: browsers, keep: keep)
             }.value
 
             if let found {
@@ -1003,7 +1017,9 @@ struct SettingsView: View {
             }
 
             if pane == .account(account) {
-                sessionMessage = String.localized("No Ollama session found. Sign in at ollama.com first.")
+                sessionMessage = account.provider == .xiaomiMiMo
+                    ? String.localized("No Xiaomi session found. Sign in at platform.xiaomimimo.com first.")
+                    : String.localized("No Ollama session found. Sign in at ollama.com first.")
             }
         }
     }

@@ -604,7 +604,7 @@ actor UsageLedgerReader {
         // store rather than the JSONL these two parsers read.
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .volcengine, .commandCode, .deepSeek, .devin: nil
+             .volcengine, .commandCode, .deepSeek, .devin, .xiaomiMiMo: nil
         }
 
         guard let root else { return [] }
@@ -647,7 +647,7 @@ actor UsageLedgerReader {
         case .codex: return parseCodex(data)
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .volcengine, .commandCode, .deepSeek, .devin: return Scanned()
+             .volcengine, .commandCode, .deepSeek, .devin, .xiaomiMiMo: return Scanned()
         }
     }
 

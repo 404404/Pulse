@@ -64,7 +64,7 @@ Pulse は画面の端にすっと収まる、控えめなフローティング�
 - **トークン消費（設定内のみ）**：ローカルのログ・データベース・エクスポートから読み取り、**54 のクライアントソース**を収録しています（Gemini CLI、Cline、Roo Code、OpenClaw、GitHub Copilot など）。Cursor や Trae などのエクスポート系ソースは、事前のエクスポートかキャプチャが必要です。これらはレールに表示する 18 のクォータプロバイダとは別物で、対応状況と実クライアントでの検証状況はソースごとに異なります。[ソースと対応範囲](Docs/token-spend-sources.md)。
 - **明確な使用量の推定**：直近 7 日を初期表示し、選んだ期間を記憶します。コストは公開 API 価格で算出し、サブスクリプションの請求額ではありません。価格が不明な場合やトークン数の集計が不完全な場合、時刻の詳細が分からない場合はその旨を表示します。トークン数を記録しないソースは、その旨をそのまま表示します。
 - **モデル詳細とチャート**：モデルを開くと、入力・出力・キャッシュのトークン数と推定コスト、記録に基づく日次・時間別チャート、エージェント別の内訳、並べ替えとページ送りができる詳細テーブルを表示します。チャートにポインタを合わせると、日付または時刻とそのトークン数を読み取れます。利用できない日次・時間別の内訳は「利用不可」と表示し、ゼロとはみなしません。
-- **18 のプロバイダ**：Claude Code、Codex、Antigravity、Cursor、GitHub Copilot、Grok、Grok Bot、OpenCode Go、Kimi Code、Ollama Cloud、z.ai、Zhipu、MiniMax（国際・中国本土）、Volcengine、Command Code、DeepSeek、Devin。
+- **19 のプロバイダ**：Claude Code、Codex、Antigravity、Cursor、GitHub Copilot、Grok、Grok Bot、OpenCode Go、Kimi Code、Ollama Cloud、z.ai、Zhipu、MiniMax（国際・中国本土）、Volcengine、Command Code、DeepSeek、Devin、Xiaomi Coding Plan。
 - **スクリプト可**：`Pulse --json` が最後の読み取り値——プラン、すべての上限、リセット時刻、数字がどれだけ古いか——を出力します。tmux、sketchybar、Raycast、シェルプロンプトにどうぞ。キャッシュを読むだけなので、ポーリングのコストはかかりません。
 - **開発者向け連携**：設定から Raycast 拡張と、そのまま設定できる tmux・sketchybar・シェルのスクリプトを書き出せます。アカウントのリンクは該当ペインを直接開きます。[セットアップガイド](Docs/integrations.md)。
 - **接続診断**：実際の読み取り元、キャッシュの利用、最新のチェックとフォールバックの結果を確認できます。状況に応じた操作で再接続・再ログイン・認証情報の修正ができ、アカウント情報やシークレットを含まない診断レポートをコピーできます。
@@ -119,6 +119,7 @@ Pulse は各サービスが報告する数字をそのまま表示します。�
 | **Command Code** | 貼り付けたキー、または `cmd auth login` がすでに保存したログイン | ドル建てのクレジット残高。月次プランの行は**推定**と表示 |
 | **DeepSeek** | 貼り付けたキー。文書化された `GET /user/balance` | 前払い残高のみで枠はなし。リングが何を基準にするかはあなたが選ぶ |
 | **Devin** | 入力は不要——ブラウザのセッションを読み取り、キーチェーンの確認も出ない | Devin が報告する日次・週次の枠。ブラウザセッションも貼り付けた認証情報もない場合は、アプリが保存した日付付きプランを読み取る。エンドポイント障害時は一致するエンドポイントのキャッシュのみを使い、アカウントと組織の境界を保つ（[Docs/providers/devin.md](Docs/providers/devin.md)） |
+| **Xiaomi Coding Plan** | 入力は不要——サインイン済みのブラウザセッションを読み取る。`Cookie:` ヘッダーを貼り付けることもできる | Xiaomi MiMo コンソールの月間トークン枠。期間の終了が報告されていればそれも表示する。前払い残高はカードに 1 行として並ぶ。プランのないアカウントは 0% を描かず、そう述べる（[Docs/providers/xiaomi-coding-plan.md](Docs/providers/xiaomi-coding-plan.md)） |
 
 ---
 

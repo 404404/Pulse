@@ -24,6 +24,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     case commandCode
     case deepSeek
     case devin
+    case xiaomiMiMo
 
     var id: String { rawValue }
 
@@ -79,6 +80,12 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // the quota and the account are Devin's, and Devin is what the reader
         // subscribed to.
         case .devin: "Devin"
+        // The plan, not the platform. Xiaomi's open platform sells inference
+        // by the yuan to anyone with a key; this ring is about the monthly
+        // token allowance bought on top of that, which is the thing with a
+        // denominator and the thing the buyer signed up for. "Xiaomi MiMo"
+        // would name the platform and leave the two products sharing a row.
+        case .xiaomiMiMo: "Xiaomi Coding Plan"
         }
     }
 
@@ -115,6 +122,12 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .commandCode: "commandcode"
         case .deepSeek: "deepseek"
         case .devin: "devin"
+        // Xiaomi publishes no symbol for MiMo — the mark is a two-line
+        // "Xiaomi / MiMo" lockup and that is what the console's own favicon
+        // is. Shipped as it stands rather than cropped to something Xiaomi
+        // does not use; at ring size it reads as a shape rather than as words,
+        // which is the trade for being the real mark.
+        case .xiaomiMiMo: "xiaomimimo"
         }
     }
 
@@ -137,7 +150,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // which is true today and better than a column of zeroes.
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .volcengine, .commandCode, .deepSeek, .devin: false
+             .volcengine, .commandCode, .deepSeek, .devin, .xiaomiMiMo: false
         }
     }
 
@@ -184,7 +197,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .claudeCode, .codex, .volcengine, .devin: true
         case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grok, .grokBot,
-             .commandCode, .deepSeek: false
+             .commandCode, .deepSeek, .xiaomiMiMo: false
         }
     }
 
@@ -220,7 +233,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
         // about elsewhere, so there is nothing here to state.
         case .claudeCode, .codex, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
-             .commandCode, .deepSeek, .devin:
+             .commandCode, .deepSeek, .devin, .xiaomiMiMo:
             nil
         }
     }
@@ -232,7 +245,7 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// anyone on the plan who doesn't run the CLI on this Mac.
     var usesAPIKey: Bool {
         [.openCodeGo, .kimiCode, .ollamaCloud, .zai, .glmCoding, .minimax, .minimaxCN, .volcengine,
-         .commandCode, .deepSeek, .devin].contains(self)
+         .commandCode, .deepSeek, .devin, .xiaomiMiMo].contains(self)
     }
 
     /// Whether this Mac can see the thing this provider is billing for.
@@ -267,7 +280,10 @@ enum Provider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// signed-in settings page — so a session is the only credential there is,
     /// and calling it an API key in Settings would send people looking for one
     /// that does not exist.
-    var usesSessionCookie: Bool { self == .ollamaCloud }
+    /// Xiaomi joins it for the same reason: the platform's API keys buy
+    /// inference and answer none of the console's account routes, so the plan
+    /// and the balance are behind the web session and nothing else.
+    var usesSessionCookie: Bool { self == .ollamaCloud || self == .xiaomiMiMo }
 
     /// Whether this provider's credential is read out of a browser rather than
     /// out of another tool's files.

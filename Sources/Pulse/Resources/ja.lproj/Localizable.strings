@@ -562,3 +562,10 @@
 "Not set" = "未設定";
 "Press keys…" = "キーを押してください…";
 "Add ⌘, ⌥ or ⌃" = "⌘、⌥、⌃ のいずれかが必要";
+
+/* Xiaomi Coding Plan */
+"No Xiaomi session found. Sign in at platform.xiaomimimo.com first." = "Xiaomi のセッションが見つかりません。先に platform.xiaomimimo.com でサインインしてください。";
+"Sign in to Xiaomi's platform in a browser to see usage." = "ブラウザで Xiaomi のプラットフォームにサインインすると使用量が表示されます。";
+"Xiaomi's saved session expired. Sign in again in your browser." = "Xiaomi の保存済みセッションが期限切れです。ブラウザでサインインし直してください。";
+"No Coding Plan on this Xiaomi account." = "この Xiaomi アカウントに Coding Plan はありません。";
+"Reads the console with your signed-in browser session." = "サインイン済みのブラウザセッションでコンソールを読みます。";

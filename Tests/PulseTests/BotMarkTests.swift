@@ -387,13 +387,22 @@ struct BotMarkTests {
         }
 
         let engine = BotMarkEngine()
-        let before = sample(flipped: false, from: engine, start: 0, seconds: 4)
-        let after = sample(flipped: true, from: engine, start: 4, seconds: 4)
+        let before = sample(flipped: false, from: engine, start: 0, seconds: 60)
+        let after = sample(flipped: true, from: engine, start: 60, seconds: 60)
 
+        // **Averaged over a minute, not over the last half-second.** `bored`
+        // takes a fresh glance every three to six seconds, so a short tail
+        // lands on whichever one happened to be running and the average is a
+        // coin toss — which is what made the first version of this flake.
+        func settled(_ frames: [(eyes: Double, body: CGAffineTransform)]) -> Double {
+            // Past the first second, so the turn itself is not in the average.
+            let tail = frames.dropFirst(60)
+            return tail.map(\.eyes).reduce(0, +) / Double(tail.count)
+        }
         // `bored` is one of the expressions drawn well off to one side, which
         // is exactly the case the mirror exists for.
-        let settledBefore = before.suffix(30).map(\.eyes).reduce(0, +) / 30
-        let settledAfter = after.suffix(30).map(\.eyes).reduce(0, +) / 30
+        let settledBefore = settled(before)
+        let settledAfter = settled(after)
         #expect(settledBefore > 0, "the sideways expression was not looking right to begin with")
         #expect(settledAfter < 0, "the eyes never came across")
 
@@ -405,7 +414,12 @@ struct BotMarkTests {
             let xs = frames.map { Double($0.body.tx) }
             return (xs.max() ?? 0) - (xs.min() ?? 0)
         }
-        #expect(travel(after) <= travel(before) + 1,
+        // Half again as much, not a hair more: both runs are a minute of the
+        // body's own random bob, so their extents agree to within noise and a
+        // tolerance of ±1 made this flake. What it has to catch is a body that
+        // *turns over*, which sweeps it through its whole width — several
+        // times this — and which `body.a > 0` above already rules out.
+        #expect(travel(after) <= travel(before) * 1.5 + 2,
                 "the body moved \(travel(after)) across the turn against \(travel(before)) at rest")
     }
 
