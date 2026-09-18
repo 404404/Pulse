@@ -82,12 +82,12 @@
 "The figure under each ring, docked left or right." = "貼在左右兩側時，在圓環下方顯示百分比。";
 "Time until reset" = "距離重設的時間";
 "Animated mark" = "動畫標記";
-"Bot personality" = "小機器人人格";
+"Bot personality" = "小機器人個性";
 "Bot shape" = "小機器人形狀";
 "Bot colour" = "小機器人顏色";
-"Its brand colour, or one dealt to stand apart from its neighbours." = "使用品牌色，或自動分配一個與鄰居區分開的顏色。";
+"Its brand colour, or one dealt to stand apart from its neighbours." = "用服務商的品牌色；沒有品牌色的，自動挑一個和相鄰的環錯開的顏色。";
 "A colour of your own for this bot." = "你為這個小機器人指定的顏色。";
-"Which body this bot wears. Round unless you change it." = "這個小機器人用哪種身體。不改就是圓形。";
+"Which body this bot wears. Round unless you change it." = "小機器人的身體形狀，預設是圓形。";
 "Blob" = "圓形";
 "Pebble" = "卵石";
 "Bean" = "豆形";
@@ -106,8 +106,8 @@
 "Cloud" = "雲朵";
 "Teardrop" = "水滴";
 "Leaf" = "葉片";
-"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "它扮演的角色：用哪些動作、節奏多快。自動會讓它和相鄰的環各不相同。";
-"The character you picked for this bot, wherever this ring sits." = "你為這個小機器人指定的性格，不隨它在軌道上的位置變化。";
+"The character it plays: which motions it uses and how fast. Automatic keeps it different from the rings beside it." = "它扮演的角色，決定它做哪些動作、動得多快。選「自動」時，相鄰的環不會撞到同一個角色。";
+"The character you picked for this bot, wherever this ring sits." = "你為這個小機器人指定的個性，不管它排在第幾個都不變。";
 "Calm" = "沉穩";
 "Eager" = "熱切";
 "Steady" = "踏實";
@@ -116,7 +116,7 @@
 "Playful" = "頑皮";
 "Stoic" = "冷面";
 "Proud" = "得意";
-"Draw a bot that reacts to this account instead of the provider's logo." = "用會隨該帳號狀態反應的小機器人取代供應商圖示。";
+"Draw a bot that reacts to this account instead of the provider's logo." = "把服務商圖示換成一隻小機器人，它會跟著這個帳號的狀態動。";
 "A second arc outside each ring, for how much of the window has passed." = "在圓環外側加一圈弧線，顯示本輪已經過了多少。";
 "Figure above the ring" = "數字顯示在圓環上方";
 "Show what's left" = "顯示剩餘額度";
