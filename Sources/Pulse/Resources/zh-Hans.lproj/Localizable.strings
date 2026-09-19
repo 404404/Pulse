@@ -480,6 +480,9 @@
 
 // Token spend: every agent's history added up.
 "Token spend" = "Token 消耗";
+"Read local usage records" = "读取本机用量记录";
+"When enabled, scans local records and exports." = "开启后会遍历本机的记录与导出文件。";
+"Reading %@…" = "正在读取 %@…";
 "Span" = "统计区间";
 "Counting" = "统计方式";
 "Read from local records and exports, priced at models.dev's published rates." = "读取本机的记录与导出，按 models.dev 公布的价格计价。";
@@ -569,3 +572,42 @@
 "Xiaomi's saved session expired. Sign in again in your browser." = "小米的登录信息已过期，请在浏览器里重新登录。";
 "No Coding Plan on this Xiaomi account." = "这个小米账号上没有 Coding Plan。";
 "Reads the console with your signed-in browser session." = "用你已登录的浏览器会话读取控制台。";
+
+/* 网络代理 */
+"Network" = "网络";
+"Proxy" = "代理";
+"Use macOS settings or a proxy only for Pulse." = "使用 macOS 系统设置，或只为 Pulse 指定代理。";
+"Follow System" = "跟随系统";
+"Manual" = "手动";
+"Type" = "类型";
+"HTTP" = "HTTP";
+"SOCKS5" = "SOCKS5";
+"Host" = "主机";
+"The proxy server's name or address." = "代理服务器的主机名或地址。";
+"Enter a host." = "请输入主机。";
+"Port" = "端口";
+"A number from 1 to 65535." = "输入 1 到 65535 之间的数字。";
+"Enter a whole number from 1 to 65535." = "请输入 1 到 65535 之间的整数。";
+
+/* 服务选择向导 */
+"Choose services to monitor" = "选择要监控的服务";
+"New services detected" = "发现新支持的服务";
+"Choose at least one service. Pulse reads its login and checks usage only after you finish. You can change this later in Settings." = "请至少勾选一个服务。点「完成」后，Pulse 才会读取所选服务的登录信息并查询用量。之后可以在设置里更改。";
+"This version supports more services found on your Mac. Choose any you want to add; your existing choices stay in place." = "这个版本新支持了以下服务，本机检测到了它们。勾选想添加的即可，原有选择会保留。";
+"Detected on this Mac" = "本机已检测到";
+"Select detected services" = "勾选已检测到的";
+"Done" = "完成";
+"Enable a service in its settings to start monitoring." = "在左侧选择服务，开启「在面板中显示」即可开始监控。";
+"Reads Claude Code's saved login from Keychain or its credentials file. May ask for Keychain access, including Claude Desktop's cookie storage." = "读取 Claude Code 保存在钥匙串或凭据文件里的登录信息。可能弹出钥匙串授权，包括 Claude 桌面版的 cookie 存储授权。";
+"Reads ~/.codex/auth.json and may run codex app-server with its saved login. Pulse does not request Keychain access." = "读取 ~/.codex/auth.json，也可能启动 codex app-server 使用它保存的登录。Pulse 不请求钥匙串授权。";
+"Reads the running editor's local language server and connection token. No Keychain prompt." = "连接运行中的编辑器，读取本机语言服务器的用量及连接令牌。不弹钥匙串。";
+"Reads the login saved in Cursor's local database. No Keychain prompt." = "读取 Cursor 本地数据库里保存的登录信息。不弹钥匙串。";
+"Reads the login saved in ~/.grok/auth.json. No Keychain prompt." = "读取 ~/.grok/auth.json 里保存的登录信息。不弹钥匙串。";
+"Uses a key entered in Settings, or reads OpenCode's auth.json. No Keychain prompt." = "使用在设置里填入的 key，或读取 OpenCode 的 auth.json。不弹钥匙串。";
+"Uses a key entered in Settings, or reads the saved GLM key files. No Keychain prompt." = "使用在设置里填入的 key，或读取本机保存的 GLM key 文件。不弹钥匙串。";
+"Uses a key entered in Settings, or reads ~/.commandcode/auth.json. No Keychain prompt." = "使用在设置里填入的 key，或读取 ~/.commandcode/auth.json。不弹钥匙串。";
+"Reads Devin's web login from local Chromium browsers without a prompt; may also read the desktop app's saved plan." = "读取本机 Chromium 浏览器里 Devin 网页版的登录信息，不弹授权窗口；也可能读取桌面版保存的套餐。";
+"Runs arkcli with its saved login, or uses access keys entered in Settings. Pulse does not request Keychain access." = "启动 arkcli 使用它保存的登录，或使用在设置里填入的访问密钥。Pulse 不请求钥匙串授权。";
+"Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "使用你在设置里导入的浏览器登录会话。导入时可能请求浏览器的钥匙串授权。";
+"Uses the GitHub login you connect in Settings. No Keychain prompt." = "使用你在设置里连接的 GitHub 登录。不弹钥匙串。";
+"Uses only the API key you enter in Settings. No Keychain prompt." = "只使用你在设置里填入的 API key。不弹钥匙串。";

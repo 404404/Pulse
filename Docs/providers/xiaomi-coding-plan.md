@@ -7,7 +7,7 @@ Xiaomi's MiMo open platform, read through the console's own account routes.
 ## Place in Pulse
 
 - `Provider.xiaomiMiMo`. Icon `xiaomimimo`. Extra accounts: no. Transcripts: no. Spending history: no.
-- First run: never offered. `canReportWithoutSetup` is false until a session is stored, and a browser on this Mac is no evidence of an account — the same rule that keeps Kimi Code and DeepSeek out of a fresh rail.
+- First run: offered unchecked in the chooser, with no detected hint. A browser on this Mac is no evidence of an account. After choosing it, import a session in Settings. It participates in the enabled-account refresh pass, including the first pass after selection.
 - `usesAPIKey` is true so Settings draws a credential row; `usesSessionCookie` is true so that row is a **browser session** rather than an API-key paste. The second one is the point: the platform *does* issue API keys, and they buy inference. None of them answers the console routes below.
 - Service: [`XiaomiMiMoUsageService.swift`](../../Sources/Pulse/Providers/XiaomiMiMoUsageService.swift). Tests: `XiaomiMiMoTests`, fixtures `Tests/PulseTests/Fixtures/xiaomi-*.json`.
 

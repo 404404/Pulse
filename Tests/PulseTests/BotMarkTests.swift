@@ -29,11 +29,11 @@ struct BotMarkTests {
                                     isSpent: true, hasReading: true) == .spent)
     }
 
-    /// No reading is a mood, not a dimmed logo: the mark sleeps.
-    @Test("Nothing known sleeps, and a plain reading is idle")
+    /// No reading is its own mood, rather than an instruction to fall asleep.
+    @Test("No reading is unavailable, and a plain reading is idle")
     func quietStates() {
         #expect(BotMarkMood.resolve(isBusy: false, isRefreshing: false,
-                                    isSpent: false, hasReading: false) == .asleep)
+                                    isSpent: false, hasReading: false) == .unavailable)
         #expect(BotMarkMood.resolve(isBusy: false, isRefreshing: false,
                                     isSpent: false, hasReading: true) == .idle)
     }
@@ -176,23 +176,23 @@ struct BotMarkTests {
     func personasStayHonest() {
         // The states each mood is allowed to be played as, by meaning.
         let allowed: [BotMarkMood: Set<String>] = [
-            // `bored` and `drowsy` are idle states with a fact behind them:
-            // nothing has been written for twenty minutes, and it is late.
+            // Only the sleepy persona can add a drowsy night-time accent.
             // `listening` is idle with the pointer on this ring.
-            .idle: ["idle", "listening", "humming", "bored", "drowsy",
-                    "proud", "curious", "playful"],
-            .working: ["working", "excited", "searching", "thinking"],
-            .fetching: ["searching", "curious", "listening"],
-            .spent: ["sad", "bored", "drowsy"],
-            .asleep: ["sleeping", "drowsy", "powering-down"],
+            .idle: ["idle", "listening", "humming", "drowsy", "proud", "curious", "playful",
+                    "happy", "shy", "suspicious", "surprised", "laughing", "bouncing"],
+            .working: ["working", "excited", "searching", "thinking", "writing", "spawning",
+                       "orbit", "radar", "loading", "receiving"],
+            .fetching: ["searching", "listening", "receiving", "spawning", "radar", "loading", "orbit", "thinking"],
+            .spent: ["sad", "drowsy", "shy", "scared", "angry", "surprised", "suspicious", "alerting"],
+            .unavailable: ["confused", "drowsy", "listening", "surprised", "suspicious", "shy"],
         ]
         for persona in BotMarkPersona.allCases {
             for mood in BotMarkMood.allCases {
-                let state = persona.state(for: mood)
-                #expect(allowed[mood]?.contains(state) == true,
-                        "\(persona.rawValue) plays \(state) for \(mood.rawValue)")
-                // And it has to be a state the bundled table actually carries.
-                #expect(BotMarkLibrary.shared.state(state).id == state)
+                for state in persona.routine(for: mood).states {
+                    #expect(allowed[mood]?.contains(state) == true,
+                            "\(persona.rawValue) plays \(state) for \(mood.rawValue)")
+                    #expect(BotMarkLibrary.shared.state(state).id == state)
+                }
             }
         }
     }
@@ -528,13 +528,10 @@ struct BotMarkTests {
         let engine = BotMarkEngine()
         var time = 0.0
         var framesWithRibbons = 0
-        // Long enough for the working state's own spin to come round: it
-        // starts one every three to four and a half seconds at this tempo.
-        // **Thirty seconds, not twelve.** The playlist takes its states in a
-        // random order and two of the three are morphs, which do not spin: a
-        // twelve-second sample happened to draw no `working` at all and the
-        // test failed on a run where nothing was wrong. Long enough that the
-        // state comes round several times whatever the draw.
+        // Long enough for calm's complete authored scene and another pass at
+        // its moving face. Historically a twelve-second random playlist could
+        // omit `working` entirely; the ordered scene now visits every beat,
+        // but a sample still has to include its morphs and settling time.
         var states: Set<String> = []
         while time < 30 {
             time += 1.0 / 60
@@ -602,21 +599,19 @@ struct BotMarkTests {
         #expect(!afterwards.isEmpty)
     }
 
-    /// A quiet rail gets bored, and sleepy about it at night — and comes back
-    /// to itself either way, because the persona's own idle state stays in
-    /// the list.
-    @Test("Quiet adds boredom, night adds sleep, neither takes over")
+    /// Silence and night only add a doze to the sleepy character's playlist.
+    @Test("Only the sleepy persona adds a night-time doze")
     func quietIdleStates() {
         for persona in BotMarkPersona.allCases {
-            let busy = persona.idleStates(quiet: false, overtime: false)
-            let quiet = persona.idleStates(quiet: true, overtime: false)
-            let night = persona.idleStates(quiet: true, overtime: true)
-            #expect(busy == [persona.state(for: .idle)])
-            #expect(quiet.first == persona.state(for: .idle))
-            #expect(quiet.contains("bored"))
+            let busy = persona.idleStates(quiet: false, night: false)
+            let quiet = persona.idleStates(quiet: true, night: false)
+            let night = persona.idleStates(quiet: true, night: true)
+            #expect(busy.first == persona.state(for: .idle))
+            #expect(busy.count >= 3)
+            #expect(quiet == busy)
             #expect(night.first == persona.state(for: .idle))
-            #expect(night.contains("drowsy"))
-            // No state twice: the sleepy character already rests at `bored`.
+            #expect(night.contains("drowsy") == (persona == .sleepy))
+            // Repeating a state would make the engine choose an identical pose.
             #expect(Set(quiet).count == quiet.count)
             #expect(Set(night).count == night.count)
         }
@@ -695,8 +690,10 @@ struct BotMarkTests {
     /// the pointer are added on top of that. Stacked the same way they put an
     /// eye outside the silhouette, where it is clipped: at ring size that is a
     /// mark with one eye missing, which is exactly what it looked like on a
-    /// real rail. The fix is a ceiling — what Pulse adds fits under what the
-    /// artwork already does — and this is the measurement that caught it.
+    /// real rail. The fix is a ceiling plus a small final silhouette inset —
+    /// what Pulse adds fits under what the artwork already does, and an eye at
+    /// the bound still has enough room to render whole at ring size. This is
+    /// the measurement that caught it.
     ///
     /// Measured as the share of frames where an eye overhangs the body rather
     /// than as a worst case, because a worst case here is legitimate: a mark
@@ -816,19 +813,15 @@ struct BotMarkTests {
     /// measures what the rail actually plays.
     private static func programme(_ persona: BotMarkPersona,
                                   _ mood: BotMarkMood) -> BotMarkProgramme {
-        var programme = BotMarkProgramme(
-            states: mood == .working
-                ? persona.workingStates(overtime: false)
-                : [persona.state(for: mood)])
-        programme.mood = mood
-        programme.tempo = persona.tempo * mood.tempoEmphasis
-        programme.motionScale = persona.motionScale
-        programme.gazeScale = persona.gazeScale
-        programme.eyeScale = persona.eyeScale
-        programme.rotationScale = mood.rotationEmphasis
-        programme.squashScale = mood.squashEmphasis
-        return programme
+        BotMarkProgramme.forMood(mood, persona: persona, at: weekday, calendar: calendar)
     }
+
+    private static let calendar: Calendar = {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = TimeZone(secondsFromGMT: 0)!
+        return value
+    }()
+    private static let weekday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 14, hour: 12))!
 
     /// The height of the body as it is actually drawn.
     ///

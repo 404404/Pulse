@@ -95,6 +95,7 @@ actor CodexAppServer {
         let process = Process()
         process.executableURL = executable
         process.arguments = ["app-server"]
+        process.environment = NetworkSession.subprocessEnvironment()
 
         let input = Pipe(), output = Pipe()
         process.standardInput = input

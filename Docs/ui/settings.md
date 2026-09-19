@@ -6,6 +6,14 @@ Chrome and why it is AppKit-owned: [../architecture.md](../architecture.md). Loc
 
 The sidebar is `.searchable(placement: .sidebar)` — **not** `.automatic`: this window has no `NSToolbar`, so automatic placement has nowhere to put the field. Accounts match on the provider's name *as well as* the user's label, so a second Claude subscription called "工作" is still found by typing "claude". Matching is `localizedStandardContains` (case- and accent-insensitive, the same comparison Finder searches with). A section with no matches is omitted; nothing matching at all leaves a "No matches" line. The current selection is not cleared by a search that hides it — you keep your place.
 
+## Provider chooser
+
+`ProviderSetupView` is shared by initial setup and upgrade suggestions. Each provider is a native checkbox with its name, a presence-only **Detected on this Mac** hint, and the access description from `ProviderAccess`. Detected rows come first, names sort within each group, and every checkbox starts off. **Select detected services** is an explicit action. The list scrolls while the explanation and buttons stay visible. These access descriptions may wrap: they must be readable before a service is selected.
+
+On initial setup, **Done** is disabled until at least one is selected; closing the window leaves monitoring stopped. On an upgrade, the chooser only contains newly supported detected providers and may be completed with none selected. Existing choices continue to run. Restoration and dismissal rules: [../architecture.md](../architecture.md#provider-choice-before-monitoring).
+
+Settings stays reachable after dismissing the initial chooser. General points to the provider panes; a disabled primary provider displays the same access description above **Show in panel**. Enabling it starts monitoring. Connection, sign-in, diagnostics and usage controls appear after the initial choice. Merely opening a disabled pane does not preload its saved key, read its history, or start Codex's app server.
+
 ## Copy
 
 **Subtitles are one line.** Say what the control does. Reasoning belongs in docs, not on screen. Exceptions: the money card’s provenance and the estimate caption — those exist so an inferred figure is not read as reported.
@@ -14,7 +22,7 @@ A joined sentence needs no extra space after a Chinese full stop (`。`). `glass
 
 While Liquid Glass is on, the caption still says to drag the panel by a ring. That is current UI. The historical “glass swallows input” diagnosis is uncertain; [rings-and-surface.md](rings-and-surface.md).
 
-Group order in the general pane: **Floating panel → Notifications → Refresh → Order → Application → Shortcuts → Language**. The two groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is sixteen rows.
+Group order in the general pane: **Floating panel → Notifications → Refresh → Network → Order → Application → Shortcuts → Language**. The groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is sixteen rows. Network follows Refresh because both decide how Pulse gets a new reading. [../networking.md](../networking.md)
 
 **Turn red at** lives at the foot of that group: `AppSettings.warningThreshold`, a picker of 60–90%. It moves only the amber→red step; spent is the provider's word and is red whatever the picker says, which is what its subtitle is for. The picker keeps its localized title for accessibility even though its visible label is supplied by the row. [rings-and-surface.md](rings-and-surface.md)
 
@@ -28,7 +36,11 @@ The general pane's **Notifications** group's three controls are not independent 
 
 ## Controls
 
+The **Token spend** pane starts with **Read local usage records**, off by default on both fresh installs and upgrades. While off it shows only that control and its scan explanation. Enabling shows the normal span/results UI and starts a read; progress names the current source and its index. Sidebar round trips keep and immediately display the last completed result without checking files again; **Rescan** updates it. Leaving cancels an unfinished read, which is retried on return. Turning reading off or closing Settings releases the snapshot and derived summaries, including when another pane is selected at close. Account-history cards are independent. Reader checkpoints, cache behaviour and memory measurements: [../token-spend.md](../token-spend.md).
+
 Card borders are decorative and ignore hit testing, so they cannot cover the controls or the charts' full-height hover targets. Chart readouts: [../token-spend.md](../token-spend.md), [../refresh-and-data.md](../refresh-and-data.md).
+
+The manual proxy host and port are view-local text while they are being edited. Return or leaving either field tries the pair; only a non-empty host and a whole port from 1 through 65535 replace the saved endpoint. Invalid text stays visible with the explanation on its own row, and never refetches on each keystroke.
 
 SwiftUI `Picker` / `Menu` on macOS **cannot be given a width**. `.frame`, min/max, `fixedSize`, and a fixed-width custom label were measured (historical) and none moved the control. Right-align at `SettingsLayout.controlWidth` as a *ceiling*; long labels truncate. An `NSPopUpButton` wrapper did give a true 180pt box and was removed: short labels floated in empty chrome. Don’t rebuild it without checking that first.
 

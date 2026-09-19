@@ -301,8 +301,8 @@ struct UsageDockView: View {
     /// Where the pointer is in the panel's coordinates, or nil when it is off
     /// the panel. The marks' eyes follow it.
     var pointer: CGPoint?
-    /// Whether no CLI has written anything for a while, which idle marks
-    /// show by getting bored — and sleepy about it at night.
+    /// Whether no CLI has written for a while; only the sleepy persona uses
+    /// this to add a night-time doze.
     var isQuiet = false
     let selectedSlot: String?
     let edge: PanelEdge

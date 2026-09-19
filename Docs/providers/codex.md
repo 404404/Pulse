@@ -44,9 +44,9 @@ Locating the executable cannot rely on `PATH`: a GUI app inherits almost none of
 
 ## Proxies
 
-`URLSession` follows system proxy settings. On a machine behind a VPN that is what you want (the endpoint may only be reachable through it). A tunnel that stumbles surfaces as a Pulse error, typically `-1005 networkConnectionLost`; transient `URLError`s are retried a couple of times.
+The HTTP endpoint uses Pulse's Network setting: macOS system proxy by default, or the manual HTTP/SOCKS5 proxy. On a machine behind a VPN, following the system is usually what you want (the endpoint may only be reachable through it). A tunnel that stumbles surfaces as a Pulse error, typically `-1005 networkConnectionLost`; transient `URLError`s are retried a couple of times.
 
-`URLSessionConfiguration.connectionProxyDictionary` is empty even when a proxy is in use — it means “use the system defaults”, not “no proxy”. Do not read an empty dictionary as evidence of a direct connection.
+`codex app-server` is different: it is a child process rather than a `URLSession`. Manual HTTP starts it with `HTTP_PROXY` / `HTTPS_PROXY`, manual SOCKS5 with `ALL_PROXY`, and both with loopback in `NO_PROXY`. Changing the proxy shuts down a running helper; the next request starts it with the new environment. Follow System injects nothing and preserves the environment Pulse itself inherited. Full boundary: [../networking.md](../networking.md).
 
 ## Added accounts
 

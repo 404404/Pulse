@@ -480,6 +480,9 @@
 
 // Token spend: every agent's history added up.
 "Token spend" = "토큰 사용량";
+"Read local usage records" = "로컬 사용량 기록 읽기";
+"When enabled, scans local records and exports." = "켜면 이 Mac의 기록과 내보낸 파일을 읽습니다.";
+"Reading %@…" = "%@ 읽는 중…";
 "Span" = "집계 기간";
 "Counting" = "집계 방식";
 "Read from local records and exports, priced at models.dev's published rates." = "로컬 기록과 내보낸 파일에서 읽어, models.dev에 공개된 가격으로 환산합니다.";
@@ -569,3 +572,42 @@
 "Xiaomi's saved session expired. Sign in again in your browser." = "Xiaomi의 저장된 세션이 만료되었습니다. 브라우저에서 다시 로그인하세요.";
 "No Coding Plan on this Xiaomi account." = "이 Xiaomi 계정에는 Coding Plan이 없습니다.";
 "Reads the console with your signed-in browser session." = "로그인된 브라우저 세션으로 콘솔을 읽습니다.";
+
+/* 네트워크 프록시 */
+"Network" = "네트워크";
+"Proxy" = "프록시";
+"Use macOS settings or a proxy only for Pulse." = "macOS 시스템 설정을 사용하거나 Pulse에만 적용할 프록시를 지정합니다.";
+"Follow System" = "시스템 설정 따르기";
+"Manual" = "수동";
+"Type" = "유형";
+"HTTP" = "HTTP";
+"SOCKS5" = "SOCKS5";
+"Host" = "호스트";
+"The proxy server's name or address." = "프록시 서버의 호스트 이름 또는 주소입니다.";
+"Enter a host." = "호스트를 입력하세요.";
+"Port" = "포트";
+"A number from 1 to 65535." = "1에서 65535 사이의 숫자입니다.";
+"Enter a whole number from 1 to 65535." = "1에서 65535 사이의 정수를 입력하세요.";
+
+/* 모니터링할 서비스 선택 */
+"Choose services to monitor" = "모니터링할 서비스 선택";
+"New services detected" = "새로 지원하는 서비스 발견";
+"Choose at least one service. Pulse reads its login and checks usage only after you finish. You can change this later in Settings." = "서비스를 하나 이상 선택하세요. 완료를 누른 뒤에만 선택한 서비스의 로그인 정보를 읽고 사용량을 확인합니다. 나중에 설정에서 바꿀 수 있습니다.";
+"This version supports more services found on your Mac. Choose any you want to add; your existing choices stay in place." = "이 버전에서 새로 지원하는 서비스가 Mac에서 발견되었습니다. 추가할 서비스를 선택하세요. 기존 선택은 유지됩니다.";
+"Detected on this Mac" = "이 Mac에서 발견됨";
+"Select detected services" = "발견된 서비스 선택";
+"Done" = "완료";
+"Enable a service in its settings to start monitoring." = "왼쪽에서 서비스를 선택하고 ‘패널에 표시’를 켜면 모니터링을 시작합니다.";
+"Reads Claude Code's saved login from Keychain or its credentials file. May ask for Keychain access, including Claude Desktop's cookie storage." = "키체인 또는 인증 정보 파일에서 Claude Code의 로그인을 읽습니다. Claude 데스크톱의 쿠키 저장소를 포함해 키체인 접근 권한을 요청할 수 있습니다.";
+"Reads ~/.codex/auth.json and may run codex app-server with its saved login. Pulse does not request Keychain access." = "~/.codex/auth.json을 읽으며 저장된 로그인으로 codex app-server를 실행할 수 있습니다. Pulse는 키체인 접근 권한을 요청하지 않습니다.";
+"Reads the running editor's local language server and connection token. No Keychain prompt." = "실행 중인 편집기의 로컬 언어 서버에서 사용량과 연결 토큰을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Reads the login saved in Cursor's local database. No Keychain prompt." = "Cursor의 로컬 데이터베이스에 저장된 로그인을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Reads the login saved in ~/.grok/auth.json. No Keychain prompt." = "~/.grok/auth.json에 저장된 로그인을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Uses a key entered in Settings, or reads OpenCode's auth.json. No Keychain prompt." = "설정에 입력한 키를 사용하거나 OpenCode의 auth.json을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Uses a key entered in Settings, or reads the saved GLM key files. No Keychain prompt." = "설정에 입력한 키를 사용하거나 저장된 GLM 키 파일을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Uses a key entered in Settings, or reads ~/.commandcode/auth.json. No Keychain prompt." = "설정에 입력한 키를 사용하거나 ~/.commandcode/auth.json을 읽습니다. 키체인 확인 창은 표시되지 않습니다.";
+"Reads Devin's web login from local Chromium browsers without a prompt; may also read the desktop app's saved plan." = "이 Mac의 Chromium 계열 브라우저에서 Devin 웹 로그인을 확인 창 없이 읽습니다. 데스크톱 앱에 저장된 플랜도 읽을 수 있습니다.";
+"Runs arkcli with its saved login, or uses access keys entered in Settings. Pulse does not request Keychain access." = "저장된 로그인으로 arkcli를 실행하거나 설정에 입력한 액세스 키를 사용합니다. Pulse는 키체인 접근 권한을 요청하지 않습니다.";
+"Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "설정에서 가져온 브라우저 로그인 세션을 사용합니다. 가져올 때 브라우저의 키체인 접근 권한을 요청할 수 있습니다.";
+"Uses the GitHub login you connect in Settings. No Keychain prompt." = "설정에서 연결한 GitHub 로그인을 사용합니다. 키체인 확인 창은 표시되지 않습니다.";
+"Uses only the API key you enter in Settings. No Keychain prompt." = "설정에 입력한 API 키만 사용합니다. 키체인 확인 창은 표시되지 않습니다.";

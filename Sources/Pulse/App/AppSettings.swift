@@ -267,9 +267,8 @@ final class AppSettings {
         extraAccounts.first { $0.key == account }?.label ?? account.provider.displayName
     }
 
-    /// Which accounts appear in the rail, as ids. Never empty — the last one
-    /// left can't be switched off, since an empty rail would leave nothing to
-    /// hover, and nothing to grab to drag the panel.
+    /// Which accounts appear in the rail. Empty only until the initial choice
+    /// is made; once monitoring starts, the last ring cannot be switched off.
     ///
     /// Ids rather than providers, and stored under the same key with the same
     /// values as when it was providers: a first account's id *is* its
@@ -282,9 +281,20 @@ final class AppSettings {
                 enabledAccounts = oldValue
                 return
             }
-            UserDefaults.standard.set(Array(enabledAccounts), forKey: Key.enabledProviders)
+            UserDefaults.standard.set(Array(enabledAccounts), forKey: ProviderSelection.enabledKey)
             onChange?()
         }
+    }
+
+    var needsProviderSelection: Bool { shownAccounts.isEmpty }
+
+    /// Discovery is metadata only. Neither list enables anything on its own.
+    var detectedProviders: Set<Provider> = []
+    var suggestedProviders: Set<Provider> = []
+
+    func selectProviders(_ providers: Set<Provider>) {
+        guard !providers.isEmpty else { return }
+        enabledAccounts.formUnion(providers.map(\.rawValue))
     }
 
     /// Interface language. Applied to `LocalizationSource` as soon as it
@@ -410,6 +420,31 @@ final class AppSettings {
             onChange?()
         }
     }
+
+    /// How Pulse's own requests and supported helper processes reach the
+    /// network. System is the default so an upgrade changes nothing.
+    var networkProxy: NetworkProxySettings {
+        didSet {
+            guard networkProxy != oldValue else { return }
+            Self.storeNetworkProxy(networkProxy, in: .standard)
+            NetworkSession.apply(networkProxy)
+            onChange?()
+        }
+    }
+
+    static func storedNetworkProxy(in defaults: UserDefaults) -> NetworkProxySettings {
+        guard let data = defaults.data(forKey: Key.networkProxy),
+              let settings = try? JSONDecoder().decode(NetworkProxySettings.self, from: data)
+        else { return .default }
+        return settings
+    }
+
+    static func storeNetworkProxy(_ settings: NetworkProxySettings, in defaults: UserDefaults) {
+        guard let data = try? JSONEncoder().encode(settings) else { return }
+        defaults.set(data, forKey: Key.networkProxy)
+    }
+
+    static var networkProxyDefaultsKey: String { Key.networkProxy }
 
     /// How big the floating panel is drawn.
     var panelSize: PanelSize {
@@ -564,6 +599,23 @@ final class AppSettings {
             guard spendSpan != oldValue else { return }
             Self.storeSpendSpan(spendSpan, in: .standard)
         }
+    }
+
+    /// Local records are read only after this pane is explicitly enabled.
+    /// No onChange: that hook refreshes the quota providers.
+    var readsTokenSpend: Bool {
+        didSet {
+            guard readsTokenSpend != oldValue else { return }
+            Self.storeReadsTokenSpend(readsTokenSpend, in: .standard)
+        }
+    }
+
+    static func storedReadsTokenSpend(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: Key.readsTokenSpend) as? Bool ?? false
+    }
+
+    static func storeReadsTokenSpend(_ enabled: Bool, in defaults: UserDefaults) {
+        defaults.set(enabled, forKey: Key.readsTokenSpend)
     }
 
     /// The span last chosen, or `.week` when nothing is stored or what is
@@ -786,6 +838,7 @@ final class AppSettings {
         botShapes: [String: String] = [:],
         botColours: [String: String] = [:],
         refreshInterval: RefreshInterval = .default,
+        networkProxy: NetworkProxySettings = .default,
         autoCollapse: Bool = true,
         panelSize: PanelSize = .default,
         railSpacing: RailSpacing = .default,
@@ -800,6 +853,7 @@ final class AppSettings {
         showsSecondRing: Bool = false,
         splitAccounts: Set<String> = [],
         spendSpan: SpendSpan = .default,
+        readsTokenSpend: Bool = false,
         alertThreshold: AlertThreshold = .default,
         alertsOnReset: Bool = false,
         alertsOnFailure: Bool = false
@@ -826,6 +880,7 @@ final class AppSettings {
         self.botShapes = botShapes
         self.botColours = botColours
         self.refreshInterval = refreshInterval
+        self.networkProxy = networkProxy
         self.autoCollapse = autoCollapse
         self.panelSize = panelSize
         self.railSpacing = railSpacing
@@ -840,6 +895,7 @@ final class AppSettings {
         self.showsSecondRing = showsSecondRing
         self.splitAccounts = splitAccounts
         self.spendSpan = spendSpan
+        self.readsTokenSpend = readsTokenSpend
         self.alertThreshold = alertThreshold
         self.alertsOnReset = alertsOnReset
         self.alertsOnFailure = alertsOnFailure
@@ -1018,7 +1074,7 @@ final class AppSettings {
             [AccountKey(provider)] + extras.filter { $0.provider == provider }.map(\.key)
         }
 
-        let enabled = Set(defaults.stringArray(forKey: Key.enabledProviders) ?? [])
+        let enabled = Set(defaults.stringArray(forKey: ProviderSelection.enabledKey) ?? [])
         // Same resolution as `orderedAccounts`: stored order first, then
         // anything it doesn't mention, so a provider added since a stored list
         // was written comes last rather than vanishing.
@@ -1044,74 +1100,14 @@ final class AppSettings {
 
         let visible = defaults.object(forKey: Key.panelVisible) as? Bool ?? true
 
-        let stored = defaults.stringArray(forKey: Key.enabledProviders) ?? []
-        let previouslyOffered = defaults.stringArray(forKey: Key.offeredProviders)
-
         let extras = (defaults.data(forKey: Key.extraAccounts))
             .flatMap { try? JSONDecoder().decode([ExtraAccount].self, from: $0) } ?? []
-        // Whichever added accounts were switched on stays switched on. The
-        // rules below decide only which providers' *first* accounts appear,
-        // which is all they ever decided.
-        let enabledExtras = Set(stored).intersection(Set(extras.map(\.id)))
-
-        // A provider's first account has the provider's own raw value as its
-        // id, so a list written before accounts existed parses here unchanged.
-        var providers = Set(stored.compactMap(Provider.init(rawValue:)))
-
-        // "Has Pulse ever run here" cannot be read off the enabled set: 1.0.0
-        // computed that set and never wrote it, so it is absent for everyone
-        // upgrading. `hasRun` is absent for them too, being new. What 1.0.0
-        // *did* write is the offered list — so its presence is the evidence,
-        // and this flag takes over from the next launch onwards.
-        let hasRunBefore = defaults.bool(forKey: Key.hasRun) || previouslyOffered != nil
-        defaults.set(true, forKey: Key.hasRun)
-
-        if hasRunBefore {
-            // An upgrade with nothing stored is 1.0.0's own default, which was
-            // every provider it knew about — that is what those users have
-            // been looking at, and it is what they keep.
-            if stored.isEmpty, let previouslyOffered {
-                providers = Set(previouslyOffered.compactMap(Provider.init(rawValue:)))
-            }
-
-            // Then a provider added since is switched on once. This has to run
-            // *before* the offered list is stamped, or the very providers it
-            // exists for are marked offered without ever appearing.
-            //
-            // **Only if it can actually report something.** One that needs a
-            // key Pulse hasn't got would take a place on the rail to say
-            // "enter an API key in Settings" about a service the person may
-            // not even have an account with. It is still marked offered, so
-            // this stays a decision taken once: it appears when it is switched
-            // on in Settings, not the next time the app happens to launch.
-            let offered = Set(previouslyOffered ?? [])
-            providers.formUnion(Provider.allCases.filter {
-                !offered.contains($0.rawValue) && $0.canReportWithoutSetup
-            })
-        } else {
-            // A genuinely new Mac starts with what is installed. Nothing found
-            // at all falls back to everything: the user should still see what
-            // Pulse supports.
-            let installed = Provider.installedOnThisMac()
-            providers = installed.isEmpty ? Set(Provider.allCases) : installed
-        }
-
-        defaults.set(Provider.allCases.map(\.rawValue), forKey: Key.offeredProviders)
-
-        // Never empty. A stored list whose names no longer parse — a provider
-        // renamed or removed — would otherwise leave a rail with nothing to
-        // hover and nothing to grab.
-        //
-        // What must not be empty is the **rail**, not this set: an added
-        // account is switched on through `enabledExtras` and is not a provider
-        // here, so someone monitoring a second Codex login and nothing else
-        // has an empty `providers` and a perfectly full rail. Rebuilding from
-        // `allCases` there switched all seven back on *and wrote it to disk*,
-        // destroying the choice rather than merely misdrawing it.
-        if providers.isEmpty && enabledExtras.isEmpty { providers = Set(Provider.allCases) }
-
-        let accounts = Set(providers.map { AccountKey($0).id }).union(enabledExtras)
-        defaults.set(Array(accounts), forKey: Key.enabledProviders)
+        let detected = Provider.installedOnThisMac()
+        let selection = ProviderSelection.restore(
+            in: defaults,
+            knownAccounts: Set(Provider.allCases.map(\.rawValue)).union(extras.map(\.id)),
+            detected: detected
+        )
 
         let language = defaults.string(forKey: Key.language)
             .flatMap(AppLanguage.init(rawValue:)) ?? .system
@@ -1129,7 +1125,7 @@ final class AppSettings {
             deepSeekBudget: defaults.object(forKey: Key.deepSeekBudget) as? Double,
             deepSeekCurrency: defaults.string(forKey: Key.deepSeekCurrency),
             lowBalanceAlerts: defaults.dictionary(forKey: Key.lowBalanceAlerts) as? [String: Double] ?? [:],
-            enabledAccounts: accounts,
+            enabledAccounts: selection.enabledAccounts,
             extraAccounts: extras,
             providerOrder: defaults.stringArray(forKey: Key.providerOrder) ?? [],
             language: language,
@@ -1143,6 +1139,7 @@ final class AppSettings {
             botColours: defaults.dictionary(forKey: Key.botColours) as? [String: String] ?? [:],
             refreshInterval: (defaults.object(forKey: Key.refreshInterval) as? Int)
                 .flatMap(RefreshInterval.init(rawValue:)) ?? .default,
+            networkProxy: Self.storedNetworkProxy(in: defaults),
             autoCollapse: defaults.object(forKey: Key.autoCollapse) as? Bool ?? true,
             panelSize: defaults.string(forKey: Key.panelSize)
                 .flatMap(PanelSize.init(rawValue:)) ?? .default,
@@ -1160,12 +1157,16 @@ final class AppSettings {
             showsSecondRing: defaults.object(forKey: Key.showsSecondRing) as? Bool ?? false,
             splitAccounts: Set(defaults.stringArray(forKey: Key.splitAccounts) ?? []),
             spendSpan: Self.storedSpendSpan(in: defaults),
+            readsTokenSpend: Self.storedReadsTokenSpend(in: defaults),
             alertThreshold: (defaults.object(forKey: Key.alertThreshold) as? Int)
                 .flatMap(AlertThreshold.init(rawValue:)) ?? .default,
             alertsOnReset: defaults.object(forKey: Key.alertsOnReset) as? Bool ?? false,
             alertsOnFailure: defaults.object(forKey: Key.alertsOnFailure) as? Bool ?? false
         )
+        settings.detectedProviders = detected
+        settings.suggestedProviders = selection.suggestedProviders
         settings.applyLanguage()
+        NetworkSession.apply(settings.networkProxy)
         PanelMetrics.use(settings.panelSize)
         PanelMetrics.use(settings.railSpacing)
         PanelMetrics.showTopPercentages(settings.topRailShowsPercentages)
@@ -1244,7 +1245,6 @@ final class AppSettings {
         static let deepSeekBudget = "settings.deepSeekBudget"
         static let deepSeekCurrency = "settings.deepSeekCurrency"
         static let lowBalanceAlerts = "settings.lowBalanceAlerts"
-        static let enabledProviders = "settings.enabledProviders"
         static let language = "settings.language"
         static let pinnedWindows = "settings.pinnedWindows"
         static let sources = "settings.sources"
@@ -1255,6 +1255,7 @@ final class AppSettings {
         // build, which would quietly keep them on the cadence the new default
         // exists to replace.
         static let refreshInterval = "settings.refreshInterval.v2"
+        static let networkProxy = "settings.networkProxy"
         static let autoCollapse = "settings.autoCollapse"
         static let panelSize = "settings.panelSize"
         static let railSpacing = "settings.railSpacing"
@@ -1273,12 +1274,10 @@ final class AppSettings {
         static let showsSecondRing = "settings.showsSecondRing"
         static let splitAccounts = "settings.splitAccounts"
         static let spendSpan = "settings.spendSpan"
+        static let readsTokenSpend = "settings.readsTokenSpend"
         static let alertThreshold = "settings.alertThreshold"
         static let alertsOnReset = "settings.alertsOnReset"
         static let alertsOnFailure = "settings.alertsOnFailure"
-        static let offeredProviders = "settings.offeredProviders"
         static let providerOrder = "settings.providerOrder"
-        /// Set the first time Pulse runs on this Mac, and never cleared.
-        static let hasRun = "settings.hasRun"
     }
 }

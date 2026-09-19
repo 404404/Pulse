@@ -406,7 +406,7 @@ enum OAuthLogin {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await NetworkSession.shared.data(for: request)
         } catch {
             // Cancellation is not the service failing to answer. Reported as
             // one, pressing Cancel wrote an error into a pane the user had
@@ -460,7 +460,7 @@ enum OAuthLogin {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await NetworkSession.shared.data(for: request)
         } catch {
             if error is CancellationError { throw error }
             try Task.checkCancellation()
@@ -483,7 +483,7 @@ enum OAuthLogin {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await NetworkSession.shared.data(for: request)
         } catch {
             // Cancellation is not the service failing to answer. Reported as
             // one, pressing Cancel wrote an error into a pane the user had
@@ -645,7 +645,7 @@ enum OAuthLogin {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await NetworkSession.shared.data(for: request)
         } catch {
             // Cancellation is not the service failing to answer. Reported as
             // one, pressing Cancel wrote an error into a pane the user had

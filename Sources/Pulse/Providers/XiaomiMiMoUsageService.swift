@@ -118,7 +118,10 @@ struct XiaomiMiMoClient: Sendable {
     /// these from — so the `Referer` is true rather than invented.
     static let consoleURL = URL(string: "https://platform.xiaomimimo.com/#/console/balance")!
 
-    var session: URLSession = .shared
+    /// Optional only as a test seam. Production resolves the shared session at
+    /// request time so a proxy change cannot leave a client holding the one
+    /// that was invalidated.
+    var session: URLSession?
 
     func fetch(cookie: String) async throws -> XiaomiMiMoSnapshot {
         let header = try XiaomiMiMoCookie.normalize(cookie)
@@ -209,7 +212,7 @@ struct XiaomiMiMoClient: Sendable {
         request.setValue("https://\(Self.host)", forHTTPHeaderField: "Origin")
         request.setValue(Self.consoleURL.absoluteString, forHTTPHeaderField: "Referer")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await (session ?? NetworkSession.shared).data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw XiaomiMiMoError.unreadableReply("no HTTP response")
         }

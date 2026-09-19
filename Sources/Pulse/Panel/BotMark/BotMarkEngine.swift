@@ -25,7 +25,9 @@ final class BotMarkEngine {
 
     private var expressionFrom: [[CGPoint]]
     private var expressionTo: [[CGPoint]]
-    private var expressionIndex = 0
+    // Readable by the choreography test: short beats must not freeze the eye
+    // pool at its first entry forever. Mutation remains inside the engine.
+    private(set) var expressionIndex = 0
     private var expressionSpring = BotMarkSpring(1)
     private var expressionFrequency = 7.0
     private var expressionCursor = 0
@@ -110,12 +112,16 @@ final class BotMarkEngine {
     // MARK: Programme
 
     private var playlist: [String] = []
+    private var playlistOrder: BotMarkProgramme.Order = .random
     private var playlistCursor = 0
     private var playlistNext = 0.0
     private var playedMood: BotMarkMood?
     private var playedEvent: BotMarkEvent?
     private var eventUntil = 0.0
     private var particleSpinAngle = 0.0
+    /// Returning to a short pose should not always select the first pair of
+    /// eyes and leave the rest of its expression pool permanently unused.
+    private var expressionEntries: [String: Int] = [:]
 
     /// The unit circle the head blends into for every morph but the pencil.
     let circlePath: CGPath
@@ -274,35 +280,40 @@ final class BotMarkEngine {
             playedEvent = event
             eventUntil = clockTime + event.duration
             playlist = []
-            let config = programme.configuration(for: event.state)
-            setState(event.state, config: config)
+            let eventState = programme.state(for: event)
+            let config = programme.configuration(for: eventState, isEvent: true)
+            setState(eventState, config: config)
             return config
         }
         if programme.event == nil { playedEvent = nil }
         if clockTime < eventUntil {
             // Mid-event: hold it, and keep its own table.
-            return programme.configuration(for: state)
+            return programme.configuration(for: state, isEvent: true)
         }
 
         let due = clockTime >= playlistNext
-        if playlist != programme.states || programme.mood != playedMood {
+        if playlist != programme.states || programme.mood != playedMood || playlistOrder != programme.order {
             playlist = programme.states
+            playlistOrder = programme.order
             playedMood = programme.mood
-            playlistCursor = programme.states.count > 1
+            // Authored scenes enter at the signature pose. Raw random
+            // playlists may enter elsewhere, but idle always starts awake.
+            playlistCursor = programme.order == .random && programme.mood != .idle && programme.states.count > 1
                 ? Int(BotMath.random(0, Double(programme.states.count)))
                 : 0
         } else if due, programme.states.count > 1 {
-            // A different one every time, so a two-state playlist alternates
-            // instead of sometimes repeating.
-            let step = 1 + Int(BotMath.random(0, Double(programme.states.count - 1)))
+            // Authored scenes visit every beat. Random callers still choose
+            // a different state, never an immediate repeat.
+            let step = programme.order == .sequence
+                ? 1 : 1 + Int(BotMath.random(0, Double(programme.states.count - 1)))
             playlistCursor = (playlistCursor + step) % programme.states.count
         } else if !due {
             return programme.configuration(for: state)
         }
 
-        playlistNext = clockTime + BotMath.random(programme.hold.lowerBound,
-                                                  programme.hold.upperBound)
         let next = programme.states[min(playlistCursor, programme.states.count - 1)]
+        let hold = programme.holdDuration(for: next)
+        playlistNext = clockTime + BotMath.random(hold.lowerBound, hold.upperBound)
         let config = programme.configuration(for: next)
         setState(next, config: config)
         return config
@@ -317,7 +328,9 @@ final class BotMarkEngine {
         let now = clockTime
         state = identifier
         stateStartedAt = now
-        expressionCursor = 0
+        let pool = config.expressionPool
+        expressionCursor = pool.isEmpty ? 0 : (expressionEntries[identifier] ?? 0) % pool.count
+        if !pool.isEmpty { expressionEntries[identifier] = (expressionCursor + 1) % pool.count }
         expressionNext = now + BotMath.random(config.expressionCadence.0, config.expressionCadence.1) * config.tempo
         blinkNext = now + BotMath.random(1500, 7000)
         gazeNext = now + BotMath.random(500, 1400)
@@ -325,7 +338,8 @@ final class BotMarkEngine {
         impulseNext = now + BotMath.random(500, 1200)
         behaviorNext = now + (identifier == "excited" ? BotMath.random(400, 1100)
                               : identifier == "searching" ? BotMath.random(800, 1600)
-                              : identifier == "working" ? BotMath.random(1200, 2400)
+                               : identifier == "working" ? BotMath.random(1200, 2400)
+                               : identifier == "playful" ? BotMath.random(1200, 2400)
                               : BotMath.random(6000, 10000))
         winkNext = now + BotMath.random(3000, 8000)
         blinkQueue = []
@@ -339,7 +353,7 @@ final class BotMarkEngine {
             turnDirection = Double.random(in: 0...1) < 0.5 ? 1 : -1
             celebrateCycle = -1
         }
-        let firstExpression = config.expressionPool.first ?? 0
+        let firstExpression = pool.isEmpty ? 0 : pool[expressionCursor]
         if identifier != "waking" && identifier != "sleeping" {
             if identifier != "drowsy" { scheduleBlink(now) }
             setExpression(firstExpression, frequency: identifier == "excited" ? 10 : 8)
@@ -1271,6 +1285,13 @@ final class BotMarkEngine {
         // Frame-rate corrected exponential smoothing, as upstream.
         let smoothing = 1 - exp(60 * log(0.91) * delta)
 
+        let bodyExtents = shapeRing.reduce(
+            into: (minimum: Double.infinity, maximum: -Double.infinity)
+        ) { extents, point in
+            extents.minimum = min(extents.minimum, Double(point.x))
+            extents.maximum = max(extents.maximum, Double(point.x))
+        }
+        let edgeClearance = max(bodyExtents.maximum - bodyExtents.minimum, 0) * 0.025
         var output: [BotMarkFrame.Eye] = []
         for index in 0..<2 {
             // Upstream advances the pointer once per eye, so it settles twice
@@ -1368,8 +1389,11 @@ final class BotMarkEngine {
             let y = BotMath.clamp(headCentre + face.y + (centre.y + driftY - headCentre) * face.sy,
                           scanTop + halfHeight, scanBottom - halfHeight)
 
-            // Keep the eye inside the silhouette: sample the body's width at
-            // every other point of the eye outline and clamp to the tightest.
+            // Keep the eye visibly inside the silhouette: sample the body's
+            // width at every other point of the eye outline and clamp to the
+            // tightest. The inset is about half a point at ring size, enough
+            // that antialiasing does not turn an edge-clamped eye into half an
+            // eye without pulling ordinary glances toward the middle.
             var maxLeft = -Double.infinity
             var minRight = Double.infinity
             for pointIndex in stride(from: 0, to: ring.count, by: 2) {
@@ -1378,8 +1402,8 @@ final class BotMarkEngine {
                 let span = abs(turnAngle) > 0.001
                     ? BotMarkGeometry.spanAt(shapeRing, sampleY, headCentre: headCentre)
                     : BotMarkGeometry.shapeSpanAt(shape, spanSamples: spanSamples, sampleY, headCentre: headCentre)
-                maxLeft = max(maxLeft, span.0 - scaledX)
-                minRight = min(minRight, span.1 - scaledX)
+                maxLeft = max(maxLeft, span.0 + edgeClearance - scaledX)
+                minRight = min(minRight, span.1 - edgeClearance - scaledX)
             }
             let desired = localCentre + offsetX + driftX * face.sx
             let bounded = maxLeft <= minRight

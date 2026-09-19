@@ -146,8 +146,8 @@ struct BotMarkView: View {
     /// Where the pointer is in the panel's coordinate space, or nil when it is
     /// off the panel.
     var pointer: CGPoint?
-    /// Whether this ring is the one being pointed at. An idle mark stops what
-    /// it is doing and listens.
+    /// Whether this ring is the one being pointed at. An idle mark turns its
+    /// attention to the reader with its character's own short response.
     var isPointedAt = false
     /// Whether nothing has happened on this machine for a while — see
     /// `BotMarkPersona.idleStates`.
@@ -234,53 +234,25 @@ struct BotMarkView: View {
         .accessibilityHidden(true)
     }
 
-    /// What this mark should be taking in turn.
-    ///
-    /// Being pointed at outranks the idle playlist and nothing else: a mark
-    /// that is working carries on working while you look at it, and one that
-    /// is spent does not cheer up because the pointer arrived.
-    private func states(overtime: Bool) -> [String] {
-        switch mood {
-        case .working: persona.workingStates(overtime: overtime)
-        case .idle: isPointedAt ? ["listening"] : persona.idleStates(quiet: isQuiet,
-                                                                     overtime: overtime)
-        case .fetching, .spent, .asleep: [persona.state(for: mood)]
-        }
-    }
-
-    private func programme() -> BotMarkProgramme {
-        let overtime = BotMarkHours.isOvertime()
-        var programme = BotMarkProgramme(states: states(overtime: overtime))
+    private func programme(at date: Date = Date()) -> BotMarkProgramme {
+        var programme = BotMarkProgramme.forMood(
+            mood, persona: persona, isQuiet: isQuiet, isPointedAt: isPointedAt, at: date
+        )
         programme.event = event
-        programme.mood = mood
         programme.shape = bodyShape.shape
-        programme.tempo = persona.tempo * mood.tempoEmphasis
-        programme.motionScale = persona.motionScale
-        programme.gazeScale = persona.gazeScale
-        programme.eyeScale = persona.eyeScale
         programme.gazeBias = gaze.bias
         programme.flipX = gaze.mirrored
-        programme.rotationScale = mood.rotationEmphasis
-        programme.squashScale = mood.squashEmphasis
         programme.color = tint
         programme.eyeColor = eyeTint
         programme.viewWidth = size
-        // **On at every size, including 25pt.** These were gated off below
-        // 48pt on the theory that confetti at ring size is a few stray
-        // pixels — and the confetti is, but the *ribbons* are not: they orbit
-        // at half the body's width and the particle system scales them up on
-        // a small canvas (`sizeScale`, up to 2.6×). They are also the only
-        // thing in this whole vocabulary that unmistakably reads as "this is
-        // doing something" at ring size, which is the question the rail exists
-        // to answer. They appear when the body spins, which `working` does
-        // every few seconds.
-        programme.particlesEnabled = true
+        // No size gate: busy/event ribbons stay visible even at 25pt. The
+        // programme fences them by mood/event, so an idle spin is just play.
         programme.pointer = pointerOffset
         return programme
     }
 
     private func advance(_ date: Date) -> (frame: BotMarkFrame, config: BotMarkConfig) {
-        let programme = programme()
+        let programme = programme(at: date)
         let frame = engine.advance(to: date.timeIntervalSinceReferenceDate, programme: programme)
         // The colours are the only part of the config the drawing needs, and
         // they do not change with the state of the playlist.
@@ -293,6 +265,9 @@ struct BotMarkView: View {
         var shape: String
         var tempo: Double
         var motionScale: Double
+        var gazeScale: Double
+        var eyeScale: Double
+        var viewWidth: Double
         var gazeBias: Double
         var flipX: Bool
         var squashScale: Double
@@ -321,7 +296,8 @@ struct BotMarkView: View {
         quiet.pointer = nil
 
         let key = StillKey(state: quiet.states[0], shape: quiet.shape, tempo: quiet.tempo,
-                           motionScale: quiet.motionScale, gazeBias: quiet.gazeBias,
+                           motionScale: quiet.motionScale, gazeScale: quiet.gazeScale,
+                           eyeScale: quiet.eyeScale, viewWidth: quiet.viewWidth, gazeBias: quiet.gazeBias,
                            flipX: quiet.flipX,
                            squashScale: quiet.squashScale, rotationScale: quiet.rotationScale)
         if let cached = stills[key] {

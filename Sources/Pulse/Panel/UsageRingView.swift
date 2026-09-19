@@ -62,8 +62,8 @@ struct UsageRingView: View {
     /// The pointer in panel coordinates. The mark works out where that is
     /// relative to itself and looks at it.
     var botPointer: CGPoint?
-    /// Whether nothing has been written by any CLI for a while, which an idle
-    /// mark shows by getting bored.
+    /// Whether no CLI has written for a while. Only the sleepy persona uses
+    /// this for its occasional night-time doze.
     var botQuiet = false
     /// Whether this ring is the one being pointed at.
     var highlight: Bool = false
@@ -266,9 +266,8 @@ struct UsageRingView: View {
             if isRefreshing { refreshMark }
 
             if showsBotMark {
-                // The mark says "no reading" by being asleep, so it is **not**
-                // dimmed on top of that: a dimmed sleeping bot on a dark disc
-                // is a mark nobody can see at all.
+                // The mark has its own unavailable expression; keep it legible
+                // instead of dimming the face into the dark disc.
                 let body = botTint ?? BotMarkTint.body(for: provider)
                 BotMarkView(
                     mood: BotMarkMood.resolve(isBusy: isBusy, isRefreshing: isRefreshing,
