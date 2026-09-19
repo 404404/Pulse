@@ -6,6 +6,24 @@
         <description>Updates for Pulse.</description>
         <language>en</language>
         <item>
+            <title>1.3.0</title>
+            <pubDate>Sat, 19 Sep 2026 13:34:38 -0000</pubDate>
+            <sparkle:version>1.3.0</sparkle:version>
+            <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <link>https://github.com/qunqin24/Pulse/releases/tag/v1.3.0</link>
+            <description><![CDATA[<style>
+  h2 { font-size: 1.05em; margin: 0 0 .5em; }
+  ul { margin: 0; padding-left: 1.2em; }
+  li { margin: .3em 0; }
+  p { margin: .8em 0 0; }
+</style><h2>Pulse 1.3.0</h2><p><strong>中文</strong></p><p><strong>新功能</strong></p><ul><li><strong>首次启动先由你选择要监控的服务。</strong> Pulse 在选择完成前不会读取任何凭据，也不会开始监控。以后升级发现新的本机服务时只会提示，不会擅自开启；已有选择保持不变。</li><li><strong>代理设置。</strong> 网络可以继续跟随 macOS，也可以在设置中指定 HTTP、HTTPS 或 SOCKS5 代理。供应商请求、登录流程以及 Codex、arkcli 等辅助进程使用同一项选择。</li></ul><p><strong>改进与修复</strong></p><ul><li><strong>Token 消耗改为明确选择后才读取。</strong> 新安装默认关闭；开启后也只在查看该页面时扫描本机会话，离开页面或关闭设置会取消仍在进行的读取并释放结果。大型 JSONL 日志改为流式解析，避免为一次统计把整份文件载入内存；回到页面时会复用已经完成的结果，手动重新扫描除外。</li><li><strong>八种小机器人有了各自完整的动作编排。</strong> 日常、工作、刷新、鼠标响应和完成反馈按顺序播放，不再随机跳过招牌动作。所有日常动作与工作动作明确分开，空闲转圈不再冒出代表工作的彩带；只有「迟缓」会在深夜打瞌睡。</li><li><strong>小机器人的眼睛在连续工作动画中仍保持完整。</strong> 最终轮廓约束留出适合圆环尺寸的微小内边距，旋转和随机瞥视叠加时不会把半只眼睛裁掉。Kimi 的机器人蓝色也调亮，在小尺寸下更清楚。</li></ul><p><strong>English</strong></p><p><strong>New</strong></p><ul><li><strong>Choose what Pulse may monitor before it starts.</strong> A first-run picker makes the choice explicit. Pulse reads no credentials and starts no monitoring until it is saved. Later upgrades only suggest newly detected services; they never enable one on their own or disturb an existing choice.</li><li><strong>Proxy settings.</strong> Network traffic can keep following macOS or use a manually configured HTTP, HTTPS or SOCKS5 proxy. Provider requests, sign-in flows and helper processes such as Codex and arkcli all use the same selection.</li></ul><p><strong>Changed and fixed</strong></p><ul><li><strong>Token spend is read only after an explicit opt-in.</strong> It is off on new installs and scans local sessions only while its Settings pane is open. Leaving the pane or closing Settings cancels an unfinished read and releases its result. Large JSONL logs are streamed instead of loaded whole, while a completed result is reused when returning to the pane unless Rescan is requested.</li><li><strong>Each of the eight bots now has a complete authored choreography.</strong> Everyday, working, fetching, pointer-attention and completion scenes play every beat in order rather than randomly skipping signatures. Everyday and work vocabularies are separate across the whole cast, an idle spin no longer throws work ribbons, and only Sleepy may doze at night.</li><li><strong>Eyes remain whole through sustained work animation.</strong> The final silhouette bound reserves a small ring-sized inset, so stacked turns and glances no longer clip half an eye. Kimi&#x27;s bot blue is lighter as well, keeping its face readable at this size.</li></ul><p><a href="https://github.com/qunqin24/Pulse/releases/tag/v1.3.0">Release notes on GitHub</a></p>]]></description>
+            <enclosure url="https://github.com/qunqin24/Pulse/releases/download/v1.3.0/Pulse-1.3.0.zip"
+                       length="8171124"
+                       type="application/octet-stream"
+                       sparkle:edSignature="PJpHYBw5W9znrbCcjZEIUD9/S0aXEldku7WjfLMrIRfU2vHB1/BMj9c5By1m3ZJ18Znq6bwX03ku/AGv9f4dAA==" />
+        </item>
+        <item>
             <title>1.2.1</title>
             <pubDate>Fri, 18 Sep 2026 03:25:22 -0000</pubDate>
             <sparkle:version>1.2.1</sparkle:version>
