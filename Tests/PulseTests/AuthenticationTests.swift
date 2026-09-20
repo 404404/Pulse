@@ -155,9 +155,8 @@ struct AuthenticationTests {
             "refresh_token": "cursor-refresh-snake",
             "user_id": "user-123"
         ])
-        let snakeCredentials = try #require(
-            CursorWebLogin.parsePollResponse(status: 200, data: snake)
-        )
+        let snakeParsed = try CursorWebLogin.parsePollResponse(status: 200, data: snake)
+        let snakeCredentials = try #require(snakeParsed)
         #expect(snakeCredentials.refreshToken == "cursor-refresh-snake")
 
         let refusal = try Self.json(["error": "invalid_grant"])
