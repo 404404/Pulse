@@ -264,6 +264,8 @@
 /* Panel size */
 "Size" = "전체 크기";
 "Spacing" = "간격";
+"Round ends" = "양 끝을 둥글게";
+"The rail's ends and the card's tail follow the ring's own curve." = "레일의 양 끝과 카드 꼬리가 링과 같은 곡선을 그립니다.";
 "How much air there is between the rings." = "링 사이의 간격을 조절합니다.";
 "Tight" = "좁게";
 "Loose" = "넓게";

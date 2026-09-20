@@ -264,6 +264,8 @@
 /* Panel size */
 "Size" = "整體大小";
 "Spacing" = "間距";
+"Round ends" = "正圓端部";
+"The rail's ends and the card's tail follow the ring's own curve." = "細欄兩端和卡片尾巴跟著圓環本身的弧度走。";
 "How much air there is between the rings." = "調整圓環之間的間距。";
 "Tight" = "緊湊";
 "Loose" = "寬鬆";

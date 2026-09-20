@@ -86,28 +86,33 @@ struct UsageBubbleShape: Shape {
         // the overlap with the body punched a gap between them.
         let sweep = edge.isLeft ? -half : half
 
-        // Each flank leaves the card **along its edge** — the first control
-        // point sits on the edge itself — and bends out to the tip, so the
-        // tail grows out of the card the way the rail's flare grows out of
-        // the screen edge. It used to leave at an angle, which put a crease
-        // where it met the card and made it read as a triangle stuck on.
-        // The control point nearest the tip sets how the flanks meet: about
-        // 50° at the tip, sharp enough to aim at a ring.
-        let hug: CGFloat = 0.5
-        let approach: CGFloat = 0.45
-        let rise: CGFloat = 0.22
+        // Where the two control points of each flank sit, as fractions of
+        // `reach` along the tail and of `sweep` across it.
+        //
+        // With round ends (`AppSettings.usesRoundEnds`) the first control
+        // point sits **on the card's edge** — `along` is zero — so the flank
+        // leaves the card along that edge and bends out to the tip, the way
+        // the rail's flare leaves the screen edge. The second sets how the
+        // flanks meet: about 50° at the tip, sharp enough to aim at a ring.
+        //
+        // Softened ends keep the shipped tail, whose flanks leave the edge at
+        // an angle. That puts a crease either side of the base, which is what
+        // makes it read as a triangle stuck on rather than grown out of the
+        // card — but it is the tail the rest of that style was drawn against.
+        let (nearAlong, nearAcross, farAlong, farAcross): (CGFloat, CGFloat, CGFloat, CGFloat) =
+            PanelMetrics.usesRoundEnds ? (0, 0.5, 0.55, 0.22) : (0.24, 0.44, 0.55, 0.24)
 
         var path = Path()
         path.move(to: CGPoint(x: baseX, y: centre - sweep))
         path.addCurve(
             to: CGPoint(x: tipX, y: centre),
-            control1: CGPoint(x: baseX, y: centre - sweep * hug),
-            control2: CGPoint(x: baseX + reach * (1 - approach), y: centre - sweep * rise)
+            control1: CGPoint(x: baseX + reach * nearAlong, y: centre - sweep * nearAcross),
+            control2: CGPoint(x: baseX + reach * farAlong, y: centre - sweep * farAcross)
         )
         path.addCurve(
             to: CGPoint(x: baseX, y: centre + sweep),
-            control1: CGPoint(x: baseX + reach * (1 - approach), y: centre + sweep * rise),
-            control2: CGPoint(x: baseX, y: centre + sweep * hug)
+            control1: CGPoint(x: baseX + reach * farAlong, y: centre + sweep * farAcross),
+            control2: CGPoint(x: baseX + reach * nearAlong, y: centre + sweep * nearAcross)
         )
         // Bite back into the body so the join is covered by the fill rather
         // than leaving a seam along the edge.

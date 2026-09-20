@@ -446,6 +446,21 @@ struct SettingsView: View {
                 SettingsRowDivider()
 
                 SettingsRow(
+                    String.localized("Round ends"),
+                    subtitle: String.localized("The rail's ends and the card's tail follow the ring's own curve.")
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { settings.usesRoundEnds },
+                        set: { settings.usesRoundEnds = $0 }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!settings.isPanelVisible)
+                }
+
+                SettingsRowDivider()
+
+                SettingsRow(
                     String.localized("Liquid Glass"),
                     subtitle: glassSubtitle
                 ) {
