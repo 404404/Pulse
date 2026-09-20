@@ -17,9 +17,9 @@ Accounts the stored rail does not mention are appended **in name order**, not in
 | `Provider` | Ring name | Icon | Credential | Extra accounts | Route choice | Local transcripts | First-run evidence |
 |---|---|---|---|---|---|---|---|
 | `.claudeCode` | Claude Code | `claude` | Borrow CLI login; Pulse OAuth for extras | yes | endpoint / desktop / status line | yes | `~/.claude`, Claude support directory, or `Claude.app` exists |
-| `.codex` | Codex | `openai` | Borrow `~/.codex/auth.json`; Pulse OAuth for extras | yes | endpoint / app-server | yes | `~/.codex` exists |
+| `.codex` | Codex | `openai` | Local `~/.codex/auth.json`; Pulse Auth for primary and extras | yes | endpoint / app-server | yes | `~/.codex` exists |
 | `.antigravity` | Antigravity | `antigravity` | Loopback language server while the app is open | no | one, named | no | `Antigravity.app` |
-| `.cursor` | Cursor | `cursor` | Cookie built from the editor’s stored token | no (deliberate) | one, named | no | Cursor `state.vscdb` exists |
+| `.cursor` | Cursor | `cursor` | Local editor cookie; Pulse Auth for primary and extras | yes | one, named (primary) | no | Cursor `state.vscdb` exists |
 | `.openCodeGo` | OpenCode Go | `opencode` | Pasted key, else OpenCode’s `auth.json` | no | pasted / found key | no | OpenCode `auth.json` exists |
 | `.kimiCode` | Kimi Code | `kimi` | Pasted key | no | pasted key | no | none — stays off until switched on |
 | `.ollamaCloud` | Ollama Cloud | `ollama` | Browser session cookie (not an API key) | no | session | no | none |
@@ -28,8 +28,8 @@ Accounts the stored rail does not mention are appended **in name order**, not in
 | `.minimax` | MiniMax | `minimax` | Pasted key | no | pasted key | no | none |
 | `.minimaxCN` | MiniMax CN | `minimax` | Pasted key | no | pasted key | no | none |
 | `.copilot` | GitHub Copilot | `github` | GitHub device login; token in `keys.dat` | no | sign-in | no | none |
-| `.grok` | Grok | `grok` | Borrow `~/.grok/auth.json`; Pulse OAuth for extras | yes | one, named (primary) | no | `~/.grok` exists |
-| `.grokBot` | Grok Bot | `xai` | Cursor cookie; Cursor web login for extras | yes | one, named (primary) | no | **standalone** `Grok Bot.app` only |
+| `.grok` | Grok | `grok` | Local `~/.grok/auth.json`; Pulse Auth for primary and extras | yes | one, named (primary) | no | `~/.grok` exists |
+| `.grokBot` | Grok Bot | `xai` | Local Cursor cookie; Pulse Auth for primary and extras | yes | one, named (primary) | no | **standalone** `Grok Bot.app` only |
 | `.volcengine` | Volcengine | `volcengine` | `arkcli`'s own login, else a pasted `AK:SK` pair | no | arkcli / signed endpoint | no | none — stays off until switched on |
 | `.commandCode` | Command Code | `commandcode` | Pasted key, else `~/.commandcode/auth.json` | no | pasted / found key | no | `~/.commandcode/auth.json` exists |
 | `.deepSeek` | DeepSeek | `deepseek` | Pasted key | no | one, documented | no | none |
@@ -108,13 +108,13 @@ Keys are read once per launch rather than once per refresh (`UsageStore.loadAPIK
 
 ### Source choice
 
-Claude Code, Codex, Volcengine and Devin have `hasSourceChoice`. The picker applies only to primary accounts; added accounts use their own endpoint credential. `.automatic` is the default; each service owns its fallback policy, including Volcengine's preference for configured keys ([volcengine.md](volcengine.md)). Pinning means a failure is *reported* rather than quietly answered from elsewhere.
+Claude Code, Codex, Volcengine and Devin have `hasSourceChoice` through `UsageSource`. The picker applies only to primary accounts; added accounts use their own endpoint credential. `.automatic` is the default; each service owns its fallback policy, including Volcengine’s preference for configured keys ([volcengine.md](volcengine.md)). Codex, Grok, Cursor, and Grok Bot additionally expose the separate `ProviderCredentialSource` picker. Auth is endpoint-only and never falls back to a provider local login.
 
-`.desktopApp` is offered only on the **primary** Claude Code account. An added account’s picker must not offer a route `fetchAdded` would ignore.
+`.desktopApp` is offered only on the **primary** Claude Code account. An added account’s picker must not offer a route `fetchManaged` would ignore.
 
 `Provider.soleRoute` is an exhaustive switch. It used to be a ternary in Settings (Cursor’s wording, else Antigravity’s), so Grok’s pane read “Antigravity’s language server”. The row is not drawn when the answer is nil. For Grok Bot it names **Cursor’s** login, because that is whose bill it is.
 
-An added Grok account is not shown the CLI-login row: `fetchAdded` never touches `~/.grok/auth.json`.
+An added Grok account is not shown the CLI-login row: `fetchManaged` never touches `~/.grok/auth.json`.
 
 ### Diagnostic route checks and repair
 
@@ -126,7 +126,7 @@ Claude's automatic route retains an endpoint failure when a status-line capture 
 
 ### Extra accounts
 
-`supportsMultipleAccounts` is **Claude Code, Codex, Grok, and Grok Bot** — not “the two CLIs”. Cursor itself is not on the list: the same web sign-in would work, but Cursor’s usage summary is read from the editor’s stored login and a second account has no editor behind it. Grok Bot needs nothing but the token. See [authentication.md](authentication.md) and [`MonitoredAccount.swift`](../../Sources/Pulse/Usage/MonitoredAccount.swift).
+`supportsMultipleAccounts` is **Claude Code, Codex, Grok, Cursor, and Grok Bot** — not “the two CLIs”. Cursor extras use `CursorWebLogin` and their own endpoint credential; they never consult the editor’s local database. Grok Bot uses the Cursor web login with its `sand` target. See [authentication.md](authentication.md) and [`MonitoredAccount.swift`](../../Sources/Pulse/Usage/MonitoredAccount.swift).
 
 A provider’s first account id is the provider’s raw value. That is the migration: stored preferences and cache files keep matching. Making an upgrade look like a fresh install has already cost a release.
 
@@ -140,6 +140,6 @@ Claude vs Codex token fields (exclude vs include cache; running total vs per-tur
 
 ## Adding a provider
 
-A new case needs: `Provider` answers (`displayName`, `iconResource`, `keepsLocalTranscripts`, `providesHistory`, `hasSourceChoice` / `soleRoute`, `usesAPIKey` / `usesSessionCookie` / `keepsOwnCredential`, presence-only discovery, localized `monitoringAccessDescription`, `supportsMultipleAccounts`), an SVG in `Sources/Pulse/Resources/`, a service returning `ProviderUsage`, branches in `UsageStore` refresh and `fetchAdded` if relevant, and this directory updated in the same patch. `AgentActivity` and `UsageLedger` already return optional roots, so an agent with no transcripts opts out there.
+A new case needs: `Provider` answers (`displayName`, `iconResource`, `keepsLocalTranscripts`, `providesHistory`, `hasSourceChoice` / `soleRoute`, `usesAPIKey` / `usesSessionCookie` / `keepsOwnCredential`, presence-only discovery, localized `monitoringAccessDescription`, `supportsMultipleAccounts`), an SVG in `Sources/Pulse/Resources/`, a service returning `ProviderUsage`, branches in `UsageStore` refresh and `fetchManaged` if relevant, and this directory updated in the same patch. `AgentActivity` and `UsageLedger` already return optional roots, so an agent with no transcripts opts out there.
 
 Do not document how to obtain someone else’s auth tokens in issues or the repo. Do not paste session cookies, keys, or page HTML into pull requests.

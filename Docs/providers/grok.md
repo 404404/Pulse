@@ -14,6 +14,8 @@ Since June 2026 a paid plan spends **one weekly pool** across every Grok product
 
 ## Authentication sources
 
+Provider Management exposes a separate Usage source for the built-in Grok slot: Local reads `~/.grok/auth.json`, while Auth reads only the Pulse-managed credential in `accounts.dat`. Switching the source does not delete the other login, and Auth failures never fall back to the CLI file.
+
 The primary account is **Local Grok**. Pulse reads `~/.grok/auth.json` and uses the CLI token without copying it to `AccountCredentialStore`. Pulse never invokes Grok CLI logout or writes the CLI file.
 
 **Connect Grok account** starts the existing RFC 8628 device flow in Pulse. The resulting account is Pulse-managed, stored in encrypted `accounts.dat`, refreshed independently, and fetched without reading `~/.grok/auth.json`.

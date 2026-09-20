@@ -1,6 +1,27 @@
 import AppKit
 import SwiftUI
 
+enum DockPresenceState: Equatable {
+    case accessory
+    case regular
+}
+
+enum DockPresenceEvent {
+    case launch
+    case settingsOpened
+    case settingsClosed
+    case reopen
+}
+
+enum DockPresencePolicy {
+    static func next(_ state: DockPresenceState, after event: DockPresenceEvent) -> DockPresenceState {
+        switch event {
+        case .settingsOpened, .reopen: .regular
+        case .launch, .settingsClosed: .accessory
+        }
+    }
+}
+
 /// Owns the settings window.
 ///
 /// Pulse runs as an `.accessory` app, so it has no Dock icon and is normally
@@ -37,8 +58,10 @@ final class SettingsWindowController {
     }
 
     func show(link: PulseLink? = nil) {
+        NSApp.setActivationPolicy(.regular)
         navigation.isWindowVisible = true
         if let link { navigation.open(link, accounts: settings.allAccounts) }
+        let wasCreated = window == nil
         let window = window ?? makeWindow()
         self.window = window
         window.title = String.localized("Pulse Settings")
@@ -48,8 +71,9 @@ final class SettingsWindowController {
         alerts.refreshAuthorization()
 
         NSApp.activate(ignoringOtherApps: true)
+        if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
-        window.center()
+        if wasCreated { window.center() }
     }
 
     /// Re-reads the title, which is set once at creation but has to follow a
@@ -98,7 +122,12 @@ final class SettingsWindowController {
         // The documented "hairline once content is scrolled under it" setting.
         window.titlebarSeparatorStyle = .automatic
         window.isReleasedWhenClosed = false
-        window.onClose = { [weak navigation] in navigation?.isWindowVisible = false }
+        window.onClose = { [weak navigation] in
+            MainActor.assumeIsolated {
+                NSApp.setActivationPolicy(.accessory)
+                navigation?.isWindowVisible = false
+            }
+        }
         window.contentView = NSHostingView(
             rootView: SettingsView(store: store, settings: settings, placement: placement, update: update, alerts: alerts, shortcuts: shortcuts, navigation: navigation)
         )

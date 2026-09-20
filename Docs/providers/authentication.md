@@ -12,7 +12,8 @@ This is not a catalogue of secrets. Client ids below are public (they ship in ev
 |---|---|---|
 | Pasted API key or Ollama session cookie | `keys.dat` (`APIKeyStore`) | Nobody. User pastes or re-reads the browser. |
 | Copilot GitHub token | `keys.dat` as well (`keepsOwnCredential`) | Sign in again. Device tokens here are not the CLI refresh path. |
-| Extra-account logins (Claude Code, Codex, Grok, Cursor, Grok Bot) | `accounts.dat` (`AccountCredentialStore`) | `UsageStore.fetchAdded` renews Claude Code, Codex, and Grok through `OAuthLogin.refresh`; Cursor and Grok Bot keep any returned refresh token for compatibility but have no verified browser-login refresh route. |
+| Primary Auth credentials (Codex, Grok, Cursor, Grok Bot) | `accounts.dat` (`AccountCredentialStore`) | Selected in Provider Management. Auth reads only this store and never falls back to Local. |
+| Extra-account logins (Claude Code, Codex, Grok, Cursor, Grok Bot) | `accounts.dat` (`AccountCredentialStore`) | `UsageStore.fetchManaged` renews Claude Code, Codex, and Grok through `OAuthLogin.refresh`; Cursor and Grok Bot keep any returned refresh token for compatibility but have no verified browser-login refresh route. |
 
 Both files are AES-GCM boxes in Pulse’s Application Support folder, owner-only, key derived from this Mac rather than stored. `LocalSecrets` is shared so there is one copy of the crypto; a different derived key per purpose means a box from one store cannot be opened by the other.
 
@@ -28,7 +29,7 @@ Measured: a Codex access token lives on the order of 240 hours; a Claude Code on
 
 Claude Code, Codex, and Grok managed logins have their own refresh token and do not read or write what the CLI stored. Cursor and Grok Bot managed logins are also isolated in `accounts.dat`, but Pulse does not guess a refresh request for either browser-login flow. That separation is the reason for signing in.
 
-`fetchAdded` renews OAuth-managed credentials when the access token is within a minute of expiry. Cursor and Grok Bot instead report `.signedOut` when their browser-login token is no longer usable. A renewal that fails reports `.signedOut`, not a network error: the remedy is the same and the user can act on it.
+`fetchManaged` renews OAuth-managed credentials when the access token is within a minute of expiry. Cursor and Grok Bot instead report `.signedOut` when their browser-login token is no longer usable. A renewal that fails reports `.signedOut`, not a network error: the remedy is the same and the user can act on it.
 
 ## Extra accounts: who can have them
 
@@ -42,11 +43,11 @@ Claude Code, Codex, and Grok managed logins have their own refresh token and do 
 
 ## Local application login versus Pulse-managed login
 
-The first account for each provider is the local application account. Pulse reads it from the provider-owned store and does not sign it out, refresh it, or write back to it. For Codex, Grok, and Cursor this means `~/.codex/auth.json`, `~/.grok/auth.json`, or Cursor’s `state.vscdb`.
+The first account for each provider starts as the local application account. Provider Management lets Codex, Grok, Cursor, and Grok Bot switch that primary slot explicitly between Local and Auth. Local reads the provider-owned login and Pulse does not sign it out, refresh it, or write back to it. Auth reads only the Pulse-managed credential in `accounts.dat`; it never falls back to Local. For Codex, Grok, and Cursor the Local files are `~/.codex/auth.json`, `~/.grok/auth.json`, and Cursor’s `state.vscdb`.
 
-A Pulse-managed account is an added account created by the Connect action in Settings. Its access and refresh credentials are stored only in encrypted `accounts.dat` through `AccountCredentialStore`; it never copies or replaces the local application credential. Removing or signing out an added account deletes only that selected entry from `accounts.dat`.
+A Pulse-managed credential can back the primary Auth slot or an added account created by the Connect action in Settings. Its access and refresh credentials are stored only in encrypted `accounts.dat` through `AccountCredentialStore`; it never copies or replaces the local application credential. Disconnecting clears only the selected Pulse-managed entry.
 
-The same provider can therefore have one local account and multiple Pulse-managed accounts. They remain separate `AccountKey` values and are fetched through their own credential routes.
+The same provider can therefore have one Local primary account, an Auth primary account, and multiple Pulse-managed extra accounts. They remain separate credential sources and `AccountKey` values and are fetched only through the selected route.
 
 ## OAuth: Claude Code, Codex, Grok
 
@@ -62,24 +63,17 @@ Pulse cannot register an OAuth application with these providers. `OAuthLogin.Con
 - `fixedPort` is nil: any loopback port, path `/callback`.
 - No device flow. Loopback code in `LoopbackCallback` exists for this provider.
 
-### Codex — device code, not redirect
+### Codex — browser authorization code with PKCE
+The normal **Connect ChatGPT account** action uses the browser authorization-code flow from the Codex CLI, not a pasted device code. Pulse starts the loopback listener before opening the browser, generates a verifier and S256 challenge, checks the returned state, and exchanges the code into credentials stored only in `accounts.dat`.
 
-Codex is signed in by OpenAI’s device-code shape (`codex-rs/login/src/device_code_auth.rs`), **not** by a loopback redirect.
+- Authorize and token endpoints are OpenAI’s public Codex client endpoints.
+- The registered redirect is `http://localhost:1455/auth/callback`; if 1455 is occupied, Pulse tries the CLI-compatible fallback 1457 and uses the port that actually bound.
+- The published scopes are retained: `openid profile email offline_access api.connectors.read api.connectors.invoke`. The authorize request also includes `id_token_add_organizations=true`, `codex_cli_simplified_flow=true`, and `originator=codex_cli_rs`.
+- The token exchange is form encoded and follows the Codex client contract; it does not add Anthropic’s state field.
 
-1. `POST /api/accounts/deviceauth/usercode` → short code.
-2. User types it at `auth.openai.com/codex/device`.
-3. Poll `POST /api/accounts/deviceauth/token` — **403 and 404 both mean “still waiting”** (their convention, not RFC 8628’s `authorization_pending`).
-4. Reply is an authorization code **and the proof key the provider generated itself**, exchanged against their `deviceauth/callback`.
+The existing OpenAI device flow is preserved as a deliberate fallback. If browser authorization fails, Settings offers **Use device-code login instead**. It remains a code-and-poll flow with no local callback. Auth mode never falls back to the local `~/.codex/auth.json` login, and Local mode never reads the Pulse-managed account.
 
-Nothing is redirected back to this Mac, so there is no local port to collide with the CLI’s own sign-in.
-
-**The redirect flow does not work here.** Matching it field for field to the published client still ended on OpenAI’s hosted error page (`token_exchange_failed`) before the browser ever came back, twice. The loopback listener is kept for Claude Code.
-
-**Scopes must be the full published set**, including `api.connectors.read` and `api.connectors.invoke`. Asking for a narrower set looked like good practice and ended on the same error page. Taken from `codex-rs/login/src/server.rs`. Also required: extra authorize items (`id_token_add_organizations`, `codex_cli_simplified_flow`, `originator=codex_cli_rs`); exchange is the four specification fields and **not** `state` (Anthropic’s does take it); form body percent-encoded strictly (`URLComponents` leaves `:` and `/` alone and would pass `+` through as a space).
-
-The Codex CLI is open source. Read it rather than inferring from a binary’s strings — that is how the first two of these were got wrong.
-
-A sign-in can fail entirely outside Pulse: the device page asks the user to sign in if the browser has no session, and OpenAI’s hand-off to a Google account has come back `token_exchange_failed` there while Pulse’s part had already succeeded (code on screen). Remedy: be signed in at chatgpt.com first. Worth remembering before reading a provider error as a Pulse bug.
+The Codex CLI is open source. Read its current login client rather than inferring OAuth parameters from a binary; the loopback shape and fallback port are taken from [`codex-rs/login/src/server.rs`](https://github.com/openai/codex/blob/main/codex-rs/login/src/server.rs).
 
 ### Grok — RFC 8628 device code
 
@@ -105,13 +99,13 @@ The redirect flow was not chosen for Grok. Cloudflare answers 403 to anything bu
 
 Binding is a **separate step** from waiting: the port is only known once the listener is ready, and the redirect address goes into the authorize request before the browser opens. Folding the two together produced a redirect to `localhost:0`.
 
-Codex’s client is registered for exactly `http://localhost:1455/auth/callback` (unused now that Codex is device-code). Claude Code accepts any loopback port.
+Codex’s client uses `http://localhost:1455/auth/callback` and a CLI-compatible fallback port. Claude Code accepts any loopback port.
 
 `state` is checked in the callback, handed over at `start(expecting:)` rather than at `awaitCode`: the browser can beat that call.
 
 **Cancelling has to unwind the wait, not merely mark it cancelled.** A bare `CheckedContinuation` ignores cancellation; a 300-second timeout in an unstructured `Task` does not inherit it. Pressing Cancel left the attempt running, and five minutes later the abandoned cleanup wrote “the browser didn’t come back” over a second sign-in. `withTaskCancellationHandler` settles it. `OAuthLogin.post` lets `CancellationError` through instead of reporting the service failing to answer.
 
-**A busy port does not fail an `NWListener`, it parks it in `.waiting`.** Only `.failed` / `.cancelled` were handled, so a fixed-port sign-in would hang with a dead button. Unreachable today (Codex moved to device flow, Claude binds `.any`) but a live trap for the next fixed-port provider.
+**A busy port does not fail an `NWListener`, it parks it in `.waiting`.** Only `.failed` / `.cancelled` were handled, so a fixed-port sign-in would hang with a dead button. The fixed-port path is covered by the Codex client, while Claude binds `.any`.
 
 Query values are read encoded and decoded here: a query string spells a space `+` and `URLComponents` will not undo that, while decoding before substitution turns a literal plus (`%2B`) into a space.
 
@@ -149,9 +143,9 @@ Cursor publishes no authorize/token pair for a third party. Calling this OAuth s
 
 Proof key is PKCE’s algorithm. The verifier is 32 random bytes **base64url-encoded**; the challenge is the base64url of the SHA-256 of **that encoded string**, not of the raw bytes. Read out of `Grok Bot.app` (`Contents/Resources/app.asar`), not inferred.
 
-Tokens last about **sixty days** (measured from `exp` on one Mac). No refresh endpoint exists in Cursor’s client. When one ages out, `fetchAdded` reports `.signedOut` and the remedy is to sign in again.
+Tokens last about **sixty days** (measured from `exp` on one Mac). No refresh endpoint exists in Cursor’s client. When one ages out, `fetchManaged` reports `.signedOut` and the remedy is to sign in again.
 
-`OAuthLogin.Configuration.of(.grokBot)` is nil. `fetchAdded` still calls `OAuthLogin.refresh` when the token is no longer fresh; that fails closed into `.signedOut`, which is the honest path.
+`OAuthLogin.Configuration.of(.grokBot)` is nil. `fetchManaged` still calls `OAuthLogin.refresh` when the token is no longer fresh; that fails closed into `.signedOut`, which is the honest path.
 
 Pulse does **not** read `~/Library/Application Support/Grok Bot/sand-secrets.json`. That file was identified during investigation; the extra-account token Pulse obtained itself is what is stored.
 

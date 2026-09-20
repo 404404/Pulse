@@ -170,6 +170,28 @@ final class LoopbackCallback: @unchecked Sendable {
         }
     }
 
+    static func callbackCode(from components: URLComponents, path: String, expectedState: String) throws -> String {
+        guard components.path == path else { throw OAuthLogin.Failure.cancelled }
+        let items = components.percentEncodedQueryItems ?? []
+        var names: Set<String> = []
+        for item in items where !names.insert(item.name).inserted {
+            throw OAuthLogin.Failure.refused(String.localized("Duplicate callback parameter."))
+        }
+
+        func value(_ name: String) -> String? {
+            guard let raw = items.first(where: { item in item.name == name })?.value else { return nil }
+            return raw.replacingOccurrences(of: "+", with: "%20").removingPercentEncoding
+        }
+
+        if let error = value("error_description") ?? value("error") {
+            throw OAuthLogin.Failure.refused(error)
+        }
+        guard let code = value("code"), value("state") == expectedState else {
+            throw OAuthLogin.Failure.cancelled
+        }
+        return code
+    }
+
     /// Returns what to tell the browser, and settles the sign-in.
     private func handle(requestLine: String) -> String {
         let parts = requestLine.split(separator: " ")
@@ -179,33 +201,21 @@ final class LoopbackCallback: @unchecked Sendable {
             components.path == path
         else { return String.localized("This page can be closed.") }
 
-        // Read from the *encoded* items and decoded here, because a query
-        // string spells a space as "+" and `URLComponents` will not undo that
-        // — a provider's "User+declined" arrives verbatim otherwise. Doing it
-        // before decoding rather than after is what keeps a literal plus in a
-        // code (which arrives as "%2B") from being turned into a space.
-        let items = components.percentEncodedQueryItems ?? []
-        func value(_ name: String) -> String? {
-            guard let raw = items.first(where: { $0.name == name })?.value else { return nil }
-            return raw.replacingOccurrences(of: "+", with: "%20").removingPercentEncoding
-        }
-
-        if let error = value("error_description") ?? value("error") {
-            finish(.failure(OAuthLogin.Failure.refused(error)))
-            return String.localized("Sign-in failed. You can close this page.")
-        }
-
         lock.lock()
         let expected = expectedState
         lock.unlock()
 
-        guard let code = value("code"), value("state") == expected else {
+        do {
+            let code = try Self.callbackCode(from: components, path: path, expectedState: expected)
+            finish(.success(code))
+            return String.localized("Signed in. You can close this page and go back to Pulse.")
+        } catch let failure as OAuthLogin.Failure {
+            finish(.failure(failure))
+            return String.localized("Sign-in failed. You can close this page.")
+        } catch {
             finish(.failure(OAuthLogin.Failure.cancelled))
             return String.localized("Sign-in failed. You can close this page.")
         }
-
-        finish(.success(code))
-        return String.localized("Signed in. You can close this page and go back to Pulse.")
     }
 
     private func answer(_ connection: NWConnection, with message: String) {

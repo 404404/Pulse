@@ -123,9 +123,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $navigation.pane) {
-                if matches(.general) || matches(.spend) {
+                if matches(.general) || matches(.spend) || matches(.providerManagement) || !matchingProviders.isEmpty {
                     Section(String.localized("Panel")) {
                         if matches(.general) { row(.general) }
+                        if matches(.providerManagement) { row(.providerManagement) }
+                        if isSearching {
+                            ForEach(matchingProviders) { provider in row(.provider(provider)) }
+                        }
                         // Above the accounts, not below them. Eighteen
                         // provider rows is more than a sidebar shows at once,
                         // and a pane whose whole subject is "all of them
@@ -136,7 +140,7 @@ struct SettingsView: View {
                 }
 
                 if !matchingAccounts.isEmpty {
-                    Section(String.localized("Accounts")) {
+                    Section(String.localized("Connected Accounts")) {
                         // Same order as the rail: a sidebar that disagreed with
                         // the thing it configures is its own small confusion.
                         ForEach(matchingAccounts) { account in
@@ -197,8 +201,8 @@ struct SettingsView: View {
                 prompt: Text(localized: "Search")
             )
             .overlay {
-                if isSearching, matchingAccounts.isEmpty, !matches(.general), !matches(.spend),
-                   !matches(.about), !matches(.integrations) {
+                if isSearching, matchingAccounts.isEmpty, matchingProviders.isEmpty, !matches(.general), !matches(.spend),
+                   !matches(.providerManagement), !matches(.about), !matches(.integrations) {
                     Text(localized: "No matches")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -213,6 +217,8 @@ struct SettingsView: View {
 
                         switch pane {
                         case .general: general
+                        case .providerManagement: providerManagement
+                        case .provider(let provider): providerPane(provider)
                         case .account(let account): accountPane(account)
                         case .spend:
                             SettingsGroup(String.localized("Token spend")) {
@@ -306,6 +312,8 @@ struct SettingsView: View {
         HStack(spacing: 9) {
             if case .account(let account) = pane {
                 LobeIconView(provider: account.provider, size: 19)
+            } else if case .provider(let provider) = pane {
+                LobeIconView(provider: provider, size: 19)
             }
 
             Text(title(pane))
@@ -318,7 +326,16 @@ struct SettingsView: View {
     /// by nothing else.
     private func title(_ pane: SettingsPane) -> String {
         if case .account(let account) = pane { return settings.label(for: account) }
+        if case .provider(let provider) = pane { return provider.displayName }
         return pane.title
+    }
+
+    private var selectedAccount: AccountKey? {
+        switch pane {
+        case .account(let account): account
+        case .provider(let provider): AccountKey(provider)
+        default: nil
+        }
     }
 
     /// What the sidebar is being narrowed to, or nothing.
@@ -335,10 +352,15 @@ struct SettingsView: View {
     /// Claude Code account, and typing the product name is the obvious way to
     /// look for it — `title(_:)` alone would only know the label.
     private var matchingAccounts: [AccountKey] {
-        guard isSearching else { return settings.orderedAccounts }
-        return settings.orderedAccounts.filter {
-            matches(title(.account($0))) || matches($0.provider.displayName)
+        guard isSearching else { return settings.orderedAccounts.filter { account in !account.isPrimary } }
+        return settings.orderedAccounts.filter { account in
+            !account.isPrimary && (matches(title(.account(account))) || matches(account.provider.displayName))
         }
+    }
+
+    private var matchingProviders: [Provider] {
+        guard isSearching else { return [] }
+        return Provider.allCases.filter { provider in matches(provider.displayName) }
     }
 
     private func matches(_ pane: SettingsPane) -> Bool {
@@ -360,7 +382,9 @@ struct SettingsView: View {
             switch pane {
             case .account(let account):
                 LobeIconView(provider: account.provider, size: 14)
-            case .general, .spend, .about, .integrations:
+            case .provider(let provider):
+                LobeIconView(provider: provider, size: 14)
+            case .general, .providerManagement, .spend, .about, .integrations:
                 Image(systemName: pane.symbol)
             }
         }
@@ -850,101 +874,6 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsGroup(String.localized("Order")) {
-                // **Drag, and the arrows as well.** This was arrows only, on
-                // the reasoning that four rows is not enough to make a drag
-                // worth learning and that an arrow which misses does nothing
-                // while a drag which misses does something. The first half of
-                // that stopped being true: there are seventeen providers now,
-                // plus every added account, and moving the bottom one to the
-                // top is sixteen clicks.
-                //
-                // The arrows stay rather than being replaced. They are the
-                // precise way to move one place, they are the only way that
-                // works from the keyboard, and they carry the accessibility
-                // labels — drag and drop has none to give.
-                ForEach(Array(settings.orderedAccounts.enumerated()), id: \.element) { index, account in
-                    if index > 0 { SettingsRowDivider() }
-
-                    SettingsRow(
-                        settings.label(for: account),
-                        // Moving something the rail isn't drawing looks like
-                        // the arrow did nothing; saying so is kinder than
-                        // hiding the row and renumbering everything.
-                        subtitle: settings.isEnabled(account) ? nil : String.localized("Not shown"),
-                        icon: account.provider.iconResource
-                    ) {
-                        HStack(spacing: 4) {
-                            Button {
-                                settings.move(account, by: -1)
-                            } label: {
-                                Image(systemName: "chevron.up")
-                            }
-                            .disabled(index == 0)
-                            .accessibilityLabel(String.localized("Move \(settings.label(for: account)) up"))
-
-                            Button {
-                                settings.move(account, by: 1)
-                            } label: {
-                                Image(systemName: "chevron.down")
-                            }
-                            .disabled(index == settings.orderedAccounts.count - 1)
-                            .accessibilityLabel(String.localized("Move \(settings.label(for: account)) down"))
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    // The whole row, not just the text: a drag that only
-                    // starts on the label is a drag most people conclude
-                    // isn't there.
-                    .contentShape(.rect)
-                    .background(dropTarget == account ? Color.accentColor.opacity(0.12) : .clear)
-                    .draggable(account.id) {
-                        // The system's own drag image is the row at full
-                        // width, which at 900pt is a slab. This is the two
-                        // things being moved: the mark and the name.
-                        HStack(spacing: 8) {
-                            LobeIconView(provider: account.provider, size: 15)
-                            Text(settings.label(for: account))
-                                .font(.system(size: 13))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                    }
-                    .dropDestination(for: String.self) { ids, _ in
-                        dropTarget = nil
-                        guard let dragged = ids.first.flatMap(AccountKey.init(id:)),
-                              settings.orderedAccounts.contains(dragged)
-                        else { return false }
-
-                        settings.move(dragged, onto: account)
-                        return true
-                    } isTargeted: { isTargeted in
-                        // Cleared by identity, not unconditionally: the row
-                        // being left and the row being entered report in an
-                        // order nobody promises, so a bare `nil` on exit can
-                        // wipe the highlight the next row has just set.
-                        if isTargeted {
-                            dropTarget = account
-                        } else if dropTarget == account {
-                            dropTarget = nil
-                        }
-                    }
-                }
-
-                // Last, and disabled while there is nothing to undo. A drag
-                // that went somewhere unintended is easy to make and, at
-                // seventeen rows, tedious to walk back by hand.
-                SettingsRowDivider()
-
-                SettingsRow(
-                    String.localized("Reset order"),
-                    subtitle: String.localized("Back to the order Pulse ships with.")
-                ) {
-                    Button(String.localized("Reset")) { settings.resetOrder() }
-                        .disabled(!settings.hasCustomOrder)
-                }
-            }
-
             SettingsGroup(String.localized("Application")) {
                 SettingsRow(
                     String.localized("Open at login"),
@@ -1209,7 +1138,7 @@ struct SettingsView: View {
                 store.loadAPIKeys()
                 store.refresh(account)
                 // The keychain dialog may outlive the pane that opened it.
-                if pane == .account(account) {
+                if selectedAccount == account {
                     apiKey = found.header
                     savedKey = found.header
                     sessionMessage = String.localized("Read from \(found.browser.name).")
@@ -1217,7 +1146,7 @@ struct SettingsView: View {
                 return
             }
 
-            if pane == .account(account) {
+            if selectedAccount == account {
                 // Named per provider for the same reason the switch above is
                 // exhaustive: a shared sentence would send somebody to the
                 // wrong site.
@@ -1250,7 +1179,7 @@ struct SettingsView: View {
                 DevinUsageService.fromBrowser(chosen)
             }.value
 
-            guard pane == .account(account) else { return }
+            guard selectedAccount == account else { return }
             guard let found else {
                 sessionMessage = String.localized("No Devin session found. Sign in at app.devin.ai first.")
                 return
@@ -1274,6 +1203,141 @@ struct SettingsView: View {
         // Including the history, which otherwise keeps saying there is no key
         // until the pane is left and come back to.
         Task { await loadHistory() }
+    }
+
+    private var providerManagement: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsGroup(String.localized("Providers")) {
+                ForEach(Array(Provider.allCases.enumerated()), id: \.element) { index, provider in
+                    if index > 0 { SettingsRowDivider() }
+                    let account = AccountKey(provider)
+                    SettingsRow(
+                        provider.displayName,
+                        subtitle: providerSummary(provider),
+                        icon: provider.iconResource
+                    ) {
+                        HStack(spacing: 8) {
+                            Text(providerStatus(provider))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Toggle("", isOn: Binding(
+                                get: { settings.isEnabled(account) },
+                                set: { isEnabled in settings.setEnabled(isEnabled, for: account) }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            Button { pane = .provider(provider) } label: {
+                                Image(systemName: "chevron.right")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(String.localized("Open"))
+                        }
+                    }
+                }
+            }
+
+            SettingsGroup(String.localized("Panel order")) {
+                ForEach(Array(settings.orderedAccounts.enumerated()), id: \.element) { index, account in
+                    if index > 0 { SettingsRowDivider() }
+                    panelOrderRow(account)
+                }
+
+                SettingsRowDivider()
+                SettingsRow(
+                    String.localized("Reset order"),
+                    subtitle: String.localized("Back to the order Pulse ships with.")
+                ) {
+                    Button(String.localized("Reset")) { settings.resetOrder() }
+                        .disabled(!settings.hasCustomOrder)
+                }
+            }
+        }
+    }
+
+    private func providerSummary(_ provider: Provider) -> String {
+        let account = AccountKey(provider)
+        if !settings.isEnabled(account) {
+            return provider.supportsPulseManagedLogin
+                ? "\(settings.credentialSource(for: account).title) · " + String.localized("Not shown")
+                : String.localized("Not shown")
+        }
+        if provider.supportsPulseManagedLogin {
+            return "\(settings.credentialSource(for: account).title) · \(providerStatus(provider))"
+        }
+        return providerStatus(provider)
+    }
+
+    private func providerStatus(_ provider: Provider) -> String {
+        switch store.usage(for: AccountKey(provider)).state {
+        case .live: return String.localized("Connected")
+        case .stale: return String.localized("Reading may be out of date")
+        case .unavailable(let reason): return reason.message
+        }
+    }
+
+    private func panelOrderRow(_ account: AccountKey) -> some View {
+        SettingsRow(
+            settings.label(for: account),
+            subtitle: settings.isEnabled(account) ? nil : String.localized("Not shown"),
+            icon: account.provider.iconResource
+        ) {
+            HStack(spacing: 10) {
+                Toggle("", isOn: Binding(
+                    get: { settings.isEnabled(account) },
+                    set: { isEnabled in settings.setEnabled(isEnabled, for: account) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(settings.isEnabled(account) && settings.enabledAccounts.count == 1)
+
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(String.localized("Drag to reorder"))
+            }
+        }
+        .contentShape(.rect)
+        .background(dropTarget == account ? Color.accentColor.opacity(0.12) : .clear)
+        .overlay(alignment: .bottom) {
+            if dropTarget == account {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+                    .padding(.leading, 14)
+            }
+        }
+        .draggable(account.id) {
+            HStack(spacing: 8) {
+                LobeIconView(provider: account.provider, size: 15)
+                Text(settings.label(for: account))
+                    .font(.system(size: 13))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .dropDestination(for: String.self) { ids, _ in
+            dropTarget = nil
+            guard let dragged = ids.first.flatMap(AccountKey.init(id:)),
+                  settings.orderedAccounts.contains(dragged) else { return false }
+            settings.move(dragged, onto: account)
+            return true
+        } isTargeted: { targeted in
+            if targeted {
+                dropTarget = account
+            } else if dropTarget == account {
+                dropTarget = nil
+            }
+        }
+        .accessibilityAction(named: Text(String.localized("Move up"))) {
+            settings.move(account, by: -1)
+        }
+        .accessibilityAction(named: Text(String.localized("Move down"))) {
+            settings.move(account, by: 1)
+        }
+    }
+
+    private func providerPane(_ provider: Provider) -> some View {
+        accountPaneBody(AccountKey(provider), provider)
     }
 
     private func accountPane(_ account: AccountKey) -> some View {
@@ -1628,7 +1692,7 @@ struct SettingsView: View {
     /// What a history read depends on. A change to any of it means the
     /// sentence on screen is about to describe a read that no longer applies.
     private var historyKey: String {
-        guard case .account(let account) = pane else { return "\(pane)" }
+        guard let account = selectedAccount else { return "\(pane)" }
         return "\(account.id)|\(settings.isEnabled(account))"
     }
 
@@ -1741,7 +1805,7 @@ struct SettingsView: View {
     private func loadHistory() async {
         // History is per provider — it is read from that CLI's transcripts,
         // which do not say which account was signed in at the time.
-        guard case .account(let account) = pane else { return }
+        guard let account = selectedAccount else { return }
         let provider = account.provider
         guard settings.isEnabled(account), account.isPrimary else {
             ledgers[provider] = .empty
@@ -2059,12 +2123,32 @@ struct SettingsView: View {
     @ViewBuilder
     private func connection(for account: AccountKey) -> some View {
         let source = settings.source(for: account)
+        let credentialSource = settings.credentialSource(for: account)
 
         if hasConnectionControls(for: account) {
         SettingsGroup(String.localized("Connection")) {
+            if account.isPrimary, account.provider.supportsPulseManagedLogin {
+                SettingsRow(
+                    String.localized("Usage source"),
+                    subtitle: credentialSource.detail
+                ) {
+                    Picker("", selection: Binding(
+                        get: { settings.credentialSource(for: account) },
+                        set: { newSource in settings.setCredentialSource(newSource, for: account) }
+                    )) {
+                        ForEach(ProviderCredentialSource.allCases) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: SettingsLayout.controlWidth, alignment: .trailing)
+                }
+                if account.provider.hasSourceChoice { SettingsRowDivider() }
+            }
+
             // A account.provider with a single route gets told, not asked. A picker
             // with one entry is a control that cannot do anything.
-            if account.isPrimary, account.provider.hasSourceChoice {
+            if account.isPrimary, account.provider.hasSourceChoice, (!account.provider.supportsPulseManagedLogin || credentialSource == .local) {
                 SettingsRow(
                     String.localized("Read usage from"),
                     subtitle: source.detail(for: account.provider)
@@ -2236,10 +2320,10 @@ struct SettingsView: View {
                 // Cursor Antigravity's sentence.
                 // Primary only. What this row names is the login the
                 // provider's own tool stored, and an account Pulse signed in
-                // to itself does not use it — `fetchAdded` goes straight over
+                // to itself does not use it — `fetchManaged` goes straight over
                 // HTTP with the token Pulse holds. Stating the CLI's route
                 // there would name a credential this account never touches.
-                if account.isPrimary, let route = account.provider.soleRoute {
+                if account.isPrimary, let route = account.provider.soleRoute, (!account.provider.supportsPulseManagedLogin || credentialSource == .local) {
                     SettingsRow(String.localized("Read usage from"), subtitle: route.note) {
                         Text(route.name)
                             .font(.system(size: 12))
@@ -2274,6 +2358,7 @@ struct SettingsView: View {
     /// four questions it asks, answered before the heading is drawn.
     private func hasConnectionControls(for account: AccountKey) -> Bool {
         guard account.isPrimary else { return false }
+        if account.provider.supportsPulseManagedLogin { return true }
         if account.provider.hasSourceChoice { return true }
         if account.provider == .copilot { return true }
         if account.provider.usesAPIKey { return true }
@@ -2283,29 +2368,31 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func authenticationStatus(for account: AccountKey) -> some View {
-        let credential = account.isPrimary ? nil : AccountCredentialStore.credentials(for: account)
+        let source = settings.credentialSource(for: account)
+        let credential = source == .auth ? AccountCredentialStore.credentials(for: account) : nil
         let lastSuccess = store.diagnostics[account.id]?.lastSuccessfulReadingAt
 
         SettingsRow(
-            String.localized("Authentication source"),
-            subtitle: account.authenticationSource.detail
+            String.localized("Credential source"),
+            subtitle: source.detail
         ) {
-            Text(account.authenticationSource.title)
+            Text(source.title)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: SettingsLayout.controlWidth, alignment: .trailing)
         }
 
+        SettingsRowDivider()
         SettingsRow(
             String.localized("Connection status"),
-            subtitle: account.isPrimary
-                ? String.localized("Uses the provider local application login.")
+            subtitle: source == .local
+                ? String.localized("Uses the provider local login. Pulse does not change it.")
                 : (credential == nil
-                    ? String.localized("Pulse login is missing. Reconnect this account.")
+                    ? String.localized("Pulse login is missing. Sign in to use Auth.")
                     : String.localized("Pulse holds this login separately from the provider login."))
         ) {
-            Text(account.isPrimary || credential?.isFresh == true
+            Text(source == .local || credential?.isFresh == true
                 ? String.localized("Connected")
                 : String.localized("Reauthentication required"))
                 .font(.system(size: 12))
@@ -2313,6 +2400,7 @@ struct SettingsView: View {
         }
 
         if let credential {
+            SettingsRowDivider()
             SettingsRow(String.localized("Token expires")) {
                 Text(credential.expiresAt, style: .relative)
                     .font(.system(size: 12))
@@ -2320,6 +2408,7 @@ struct SettingsView: View {
             }
         }
 
+        SettingsRowDivider()
         SettingsRow(String.localized("Last successful refresh")) {
             if let lastSuccess {
                 Text(lastSuccess, style: .relative)
@@ -2329,6 +2418,19 @@ struct SettingsView: View {
                 Text(String.localized("Not recorded"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+            }
+        }
+
+        if source == .auth {
+            SettingsRowDivider()
+            SettingsRow(
+                String.localized("Disconnect"),
+                subtitle: String.localized("Clears only the Pulse-managed credential. The provider login is unchanged.")
+            ) {
+                Button(String.localized("Disconnect"), role: .destructive) {
+                    guard AccountCredentialStore.set(nil, for: account) else { return }
+                    store.refresh(account)
+                }
             }
         }
     }
@@ -2343,40 +2445,63 @@ struct SettingsView: View {
     @ViewBuilder
     private func accounts(for account: AccountKey) -> some View {
         if account.provider.supportsMultipleAccounts {
-            SettingsGroup(String.localized("Accounts")) {
+            SettingsGroup(String.localized("Connected accounts")) {
                 if account.provider.supportsPulseManagedLogin {
                     authenticationStatus(for: account)
                     SettingsRowDivider()
                 }
                 Group {
-                    SettingsRow(
-                        account.isPrimary
-                            ? Self.connectTitle(for: account.provider)
-                            : String.localized("Reconnect account"),
-                        // The one thing someone should know before they start:
-                        // whose name is on the page that opens.
-                        subtitle: account.isPrimary && account.provider.supportsPulseManagedLogin
-                            ? Self.connectSubtitle(for: account.provider)
-                            : String.localized("Opens the provider sign-in page.")
-                    ) {
-                        // One sign-in at a time, and its Cancel, code and
-                        // error belong to the provider it was started for:
-                        // a Codex device code shown on the Claude Code pane
-                        // reads as Claude Code asking for it.
-                        if signingIn == account.provider {
-                            Button(String.localized("Cancel")) {
-                                signInTask?.cancel()
-                                signInTask = nil
-                                signingIn = nil
-                                devicePrompt = nil
+                    if account.isPrimary && account.provider.supportsPulseManagedLogin {
+                        SettingsRow(
+                            Self.connectTitle(for: account.provider),
+                            subtitle: Self.connectSubtitle(for: account.provider)
+                        ) {
+                            if signingIn == account.provider {
+                                Button(String.localized("Cancel")) {
+                                    signInTask?.cancel()
+                                    signInTask = nil
+                                    signingIn = nil
+                                    devicePrompt = nil
+                                }
+                            } else {
+                                Button(Self.connectTitle(for: account.provider)) {
+                                    signIn(to: account.provider, replacing: account)
+                                }
+                                .disabled(signingIn != nil)
                             }
-                        } else {
-                            Button(account.isPrimary && account.provider.supportsPulseManagedLogin
-                                ? Self.connectTitle(for: account.provider)
-                                : String.localized("Reconnect account")) {
-                                signIn(to: account.provider, replacing: account.isPrimary ? nil : account)
+                        }
+                        SettingsRowDivider()
+                        SettingsRow(
+                            String.localized("Add another account"),
+                            subtitle: String.localized("Opens the provider sign-in page.")
+                        ) {
+                            Button(String.localized("Add another account")) {
+                                signIn(to: account.provider)
                             }
                             .disabled(signingIn != nil)
+                        }
+                    } else {
+                        SettingsRow(
+                            account.isPrimary
+                                ? String.localized("Add another account")
+                                : String.localized("Reconnect account"),
+                            subtitle: String.localized("Opens the provider sign-in page.")
+                        ) {
+                            if signingIn == account.provider {
+                                Button(String.localized("Cancel")) {
+                                    signInTask?.cancel()
+                                    signInTask = nil
+                                    signingIn = nil
+                                    devicePrompt = nil
+                                }
+                            } else {
+                                Button(account.isPrimary
+                                    ? String.localized("Add another account")
+                                    : String.localized("Reconnect account")) {
+                                    signIn(to: account.provider, replacing: account.isPrimary ? nil : account)
+                                }
+                                .disabled(signingIn != nil)
+                            }
                         }
                     }
 
@@ -2415,7 +2540,19 @@ struct SettingsView: View {
 
                     if let signInError, signInError.provider == account.provider {
                         SettingsRowDivider()
-                        SettingsRow(String.localized("Sign-in"), subtitle: signInError.message) { EmptyView() }
+                        SettingsRow(String.localized("Sign-in"), subtitle: signInError.message) {
+                            if account.provider == .codex {
+                                Button(String.localized("Use device-code login instead")) {
+                                    signIn(
+                                        to: account.provider,
+                                        replacing: account.isPrimary ? (account.provider.supportsPulseManagedLogin ? account : nil) : account,
+                                        usingDeviceCode: true
+                                    )
+                                }
+                            } else {
+                                EmptyView()
+                            }
+                        }
                     }
                 }
                 if !account.isPrimary {
@@ -2474,7 +2611,7 @@ struct SettingsView: View {
                     githubError = String.localized("Couldn't save the login on this Mac.")
                     return
                 }
-                if pane == .account(AccountKey(.copilot)) {
+                if selectedAccount == AccountKey(.copilot) {
                     apiKey = token
                     savedKey = token
                 }
@@ -2546,7 +2683,7 @@ struct SettingsView: View {
     }
 
     /// Runs the browser sign-in, then keeps whatever came back.
-    private func signIn(to provider: Provider, replacing existing: AccountKey? = nil) {
+    private func signIn(to provider: Provider, replacing existing: AccountKey? = nil, usingDeviceCode: Bool = false) {
         signingIn = provider
         signInError = nil
 
@@ -2571,7 +2708,7 @@ struct SettingsView: View {
                 } else if provider == .grokBot {
                     // Grok Bot keeps its existing Cursor target.
                     credentials = try await CursorWebLogin.signIn(target: .grokBot)
-                } else if OAuthLogin.usesDeviceCode(provider) {
+                } else if usingDeviceCode || (OAuthLogin.usesDeviceCode(provider) && provider != .codex) {
                     // A code shown on the provider's own page. No local
                     // port to collide with the CLI's sign-in, and nothing
                     // redirected back to this Mac. Whether the page fills the
@@ -2601,8 +2738,9 @@ struct SettingsView: View {
                     signInError = (provider, String.localized("Couldn't save the login on this Mac."))
                     return
                 }
+                if added.isPrimary { settings.setCredentialSource(.auth, for: added) }
                 store.refresh(added)
-                pane = .account(added)
+                pane = added.isPrimary ? .provider(provider) : .account(added)
             } catch let failure as OAuthLogin.Failure {
                 if !Task.isCancelled { signInError = (provider, failure.message) }
             } catch is CancellationError {
@@ -2619,15 +2757,16 @@ struct SettingsView: View {
         case .codex: String.localized("Connect ChatGPT account")
         case .grok: String.localized("Connect Grok account")
         case .cursor: String.localized("Connect Cursor account")
+        case .grokBot: String.localized("Connect Grok Bot account")
         default: String.localized("Add another account")
         }
     }
 
     private static func connectSubtitle(for provider: Provider) -> String {
         switch provider {
-        case .codex: String.localized("Signs in with Codex device authorization and stores the account only in Pulse.")
+        case .codex: String.localized("Opens Codex browser authorization and stores the account only in Pulse.")
         case .grok: String.localized("Signs in with Grok device authorization and stores the account only in Pulse.")
-        case .cursor: String.localized("Opens Cursor browser login and stores the account only in Pulse.")
+        case .cursor, .grokBot: String.localized("Opens Cursor browser login and stores the account only in Pulse.")
         default: String.localized("Opens the provider sign-in page.")
         }
     }
@@ -2909,6 +3048,8 @@ struct SettingsView: View {
 
 enum SettingsPane: Hashable {
     case general
+    case providerManagement
+    case provider(Provider)
     case account(AccountKey)
     /// Every agent's spending added up — a pane whose subject is not a
     /// provider, which is why it sits outside the accounts rather than inside
@@ -2920,6 +3061,8 @@ enum SettingsPane: Hashable {
     var title: String {
         switch self {
         case .general: .localized("General")
+        case .providerManagement: .localized("Provider Management")
+        case .provider(let provider): provider.displayName
         // Not "Usage history", which is what a provider's own card is called.
         // Two panes with one name is two places to look for one thing.
         case .spend: .localized("Token spend")
@@ -2936,6 +3079,8 @@ enum SettingsPane: Hashable {
     var symbol: String {
         switch self {
         case .general: "slider.horizontal.3"
+        case .providerManagement: "square.grid.2x2"
+        case .provider: "circle.grid.2x2"
         case .spend: "chart.bar"
         case .account: "square.stack.3d.up"
         case .about: "info.circle"

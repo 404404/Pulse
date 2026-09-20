@@ -643,3 +643,27 @@
 "Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "Codex에 저장된 로그인 또는 Pulse에 직접 연결한 ChatGPT 계정을 사용할 수 있습니다. Pulse는 키체인 접근 권한을 요청하지 않습니다.";
 "Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "Cursor 편집기의 로컬 로그인 또는 Pulse에 직접 연결한 Cursor 계정을 사용할 수 있습니다. 키체인 확인 창이 표시되지 않습니다.";
 "Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "Grok CLI에 저장된 로그인 또는 Pulse에 직접 연결한 Grok 계정을 사용할 수 있습니다. 키체인 확인 창이 표시되지 않습니다.";
+
+
+/* 네이티브 계정 인증 */
+"Duplicate callback parameter." = "콜백 매개변수가 중복되었습니다";
+"Authentication callback port is already in use." = "인증 콜백 포트가 이미 사용 중입니다.";
+"Credential source" = "자격 증명 소스";
+"Connected Accounts" = "연결된 계정";
+"Panel order" = "패널 순서";
+"Drag to reorder" = "드래그하여 순서 변경";
+"Move up" = "위로 이동";
+"Move down" = "아래로 이동";
+"Usage source" = "사용량 소스";
+"Uses the provider local login. Pulse does not change it." = "제공자의 로컬 로그인을 사용합니다. Pulse는 변경하지 않습니다.";
+"Pulse login is missing. Sign in to use Auth." = "Pulse 로그인이 없습니다. Auth를 사용하려면 로그인하세요.";
+"Clears only the Pulse-managed credential. The provider login is unchanged." = "Pulse가 관리하는 자격 증명만 지웁니다. 제공자 로그인은 변경되지 않습니다.";
+"Connected accounts" = "연결된 계정";
+"Use device-code login instead" = "디바이스 코드 로그인 사용";
+"Connect Grok Bot account" = "Grok Bot 계정 연결";
+"Opens Codex browser authorization and stores the account only in Pulse." = "Codex 브라우저 인증을 열고 계정은 Pulse에만 저장합니다.";
+"Provider Management" = "제공자 관리";
+"Local" = "로컬";
+"Auth" = "Auth";
+"Reads the provider local login. Pulse never changes it." = "제공자의 로컬 로그인을 읽습니다. Pulse는 변경하지 않습니다.";
+"Reads the Pulse-managed login stored separately from the provider." = "제공자와 별도로 저장된 Pulse 관리 로그인을 읽습니다.";

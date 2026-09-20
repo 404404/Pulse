@@ -55,17 +55,17 @@ struct GrokUsageService: Sendable {
     /// it. There is no route to choose: what is in `~/.grok/auth.json` belongs
     /// to whichever account the CLI is signed in to, which is not this one.
     func fetch(account: AccountKey, token: String) async -> ProviderUsage {
-        await fetch(token: token, for: account)
+        await fetch(token: token, for: account, managed: true)
     }
 
-    private func fetch(token: String, for account: AccountKey = AccountKey(.grok)) async -> ProviderUsage {
+    private func fetch(token: String, for account: AccountKey = AccountKey(.grok), managed: Bool = false) async -> ProviderUsage {
         guard let (data, response) = try? await NetworkSession.shared.data(for: request(billingEndpoint, token: token)) else {
             return .unavailable(account, reason: .unreachable)
         }
 
         switch (response as? HTTPURLResponse)?.statusCode {
         case 200: break
-        case 401, 403: return .unavailable(account, reason: account.isPrimary ? .grokLoginExpired : .signedOut)
+        case 401, 403: return .unavailable(account, reason: managed ? .signedOut : (account.isPrimary ? .grokLoginExpired : .signedOut))
         case 429: return .unavailable(account, reason: .rateLimited)
         default: return .unavailable(account, reason: .serverError)
         }

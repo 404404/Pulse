@@ -28,6 +28,10 @@ struct PulseLinkTests {
     @Test("Navigation selects only existing accounts and repeated links still clear search")
     func selectsExistingAccounts() {
         let navigation = SettingsNavigation()
+        let primary = AccountKey(.codex)
+        navigation.open(.account(primary), accounts: [primary])
+        #expect(navigation.pane == .provider(.codex))
+
         let account = AccountKey(.codex, slot: "work")
         navigation.open(.account(account), accounts: [account])
         #expect(navigation.pane == .account(account))
@@ -37,5 +41,17 @@ struct PulseLinkTests {
         navigation.open(.integrations, accounts: [])
         navigation.open(.account(account), accounts: [])
         #expect(navigation.pane == .integrations)
+    }
+    @Test("Dock presence is regular only while Settings is open")
+    func dockPresencePolicy() {
+        var state: DockPresenceState = .accessory
+        state = DockPresencePolicy.next(state, after: .launch)
+        #expect(state == .accessory)
+        state = DockPresencePolicy.next(state, after: .settingsOpened)
+        #expect(state == .regular)
+        state = DockPresencePolicy.next(state, after: .reopen)
+        #expect(state == .regular)
+        state = DockPresencePolicy.next(state, after: .settingsClosed)
+        #expect(state == .accessory)
     }
 }

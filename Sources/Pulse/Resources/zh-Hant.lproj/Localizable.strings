@@ -643,3 +643,27 @@
 "Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "可以使用 Codex 儲存的登入資訊，也可以直接在 Pulse 中連接 ChatGPT 帳戶。Pulse 不會要求鑰匙圈存取權限。";
 "Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "可以使用 Cursor 編輯器的本機登入資訊，也可以直接在 Pulse 中連接 Cursor 帳戶。不會出現鑰匙圈提示。";
 "Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "可以使用 Grok CLI 儲存的登入資訊，也可以直接在 Pulse 中連接 Grok 帳戶。不會出現鑰匙圈提示。";
+
+
+/* 原生帳戶驗證 */
+"Duplicate callback parameter." = "回呼參數重複";
+"Authentication callback port is already in use." = "驗證回呼連接埠已被使用。";
+"Credential source" = "憑證來源";
+"Connected Accounts" = "已連線帳號";
+"Panel order" = "面板順序";
+"Drag to reorder" = "拖曳以重新排序";
+"Move up" = "上移";
+"Move down" = "下移";
+"Usage source" = "用量來源";
+"Uses the provider local login. Pulse does not change it." = "讀取提供商的本機登入。Pulse 不會修改它。";
+"Pulse login is missing. Sign in to use Auth." = "缺少 Pulse 登入。請登入以使用 Auth。";
+"Clears only the Pulse-managed credential. The provider login is unchanged." = "只會清除 Pulse 管理的憑證，不會變更提供商登入。";
+"Connected accounts" = "已連線帳號";
+"Use device-code login instead" = "改用裝置代碼登入";
+"Connect Grok Bot account" = "連線 Grok Bot 帳戶";
+"Opens Codex browser authorization and stores the account only in Pulse." = "開啟 Codex 瀏覽器授權，帳戶只會儲存在 Pulse。";
+"Provider Management" = "供應商管理";
+"Local" = "讀取本機資訊";
+"Auth" = "Auth 登入";
+"Reads the provider local login. Pulse never changes it." = "讀取提供商的本機登入。Pulse 不會修改它。";
+"Reads the Pulse-managed login stored separately from the provider." = "讀取與提供商分開儲存的 Pulse 管理登入。";

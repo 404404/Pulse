@@ -38,6 +38,16 @@ struct ConnectionDiagnosticsView: View {
             }
 
             SettingsRowDivider()
+            SettingsRow(
+                String.localized("Credential source"),
+                subtitle: settings.credentialSource(for: account).detail
+            ) {
+                Text(settings.credentialSource(for: account).title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            SettingsRowDivider()
             SettingsRow(String.localized("Last successful reading")) {
                 timestamp(diagnostic?.lastSuccessfulReadingAt ?? reading.observedAt)
             }
@@ -114,7 +124,7 @@ struct ConnectionDiagnosticsView: View {
 
     private func copyReport() {
         let report = ConnectionDiagnostic.report(
-            account: account, preference: settings.source(for: account), displayed: reading,
+            account: account, preference: settings.source(for: account), credentialSource: settings.credentialSource(for: account), displayed: reading,
             diagnostic: diagnostic,
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development",
             now: Date()

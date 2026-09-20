@@ -185,6 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         update.check()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return true
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if let link = PulseLink(url: url) { showSettings(link: link) }

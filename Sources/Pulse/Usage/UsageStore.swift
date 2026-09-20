@@ -396,6 +396,10 @@ final class UsageStore {
         let pass = generation
 
         let codexSource = settings.source(for: AccountKey(.codex))
+        let codexCredentialSource = settings.credentialSource(for: AccountKey(.codex))
+        let grokCredentialSource = settings.credentialSource(for: AccountKey(.grok))
+        let cursorCredentialSource = settings.credentialSource(for: AccountKey(.cursor))
+        let grokBotCredentialSource = settings.credentialSource(for: AccountKey(.grokBot))
         let claudeSource = settings.source(for: AccountKey(.claudeCode))
         let previous = usage
 
@@ -450,7 +454,9 @@ final class UsageStore {
             // Independent, so they run side by side rather than one waiting on
             // another's round trip.
             async let codexUsage = wanted.contains(.codex)
-                ? await codex.fetch(source: codexSource)
+                ? (codexCredentialSource == .auth
+                    ? await Self.fetchManaged(AccountKey(.codex), claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await codex.fetch(source: codexSource))
                 : ProviderUsage.unavailable(.codex, reason: .loading)
             async let claudeUsage = wanted.contains(.claudeCode)
                 ? await claudeCode.fetch(source: claudeSource)
@@ -459,7 +465,9 @@ final class UsageStore {
                 ? await antigravity.fetch()
                 : ProviderUsage.unavailable(.antigravity, reason: .loading)
             async let cursorUsage = wanted.contains(.cursor)
-                ? await cursor.fetch()
+                ? (cursorCredentialSource == .auth
+                    ? await Self.fetchManaged(AccountKey(.cursor), claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await cursor.fetch())
                 : ProviderUsage.unavailable(.cursor, reason: .loading)
             async let openCodeUsage = wanted.contains(.openCodeGo)
                 ? await openCode.fetch()
@@ -489,10 +497,14 @@ final class UsageStore {
                 ? await copilot.fetch()
                 : ProviderUsage.unavailable(.copilot, reason: .loading)
             async let grokUsage = wanted.contains(.grok)
-                ? await grok.fetch()
+                ? (grokCredentialSource == .auth
+                    ? await Self.fetchManaged(AccountKey(.grok), claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await grok.fetch())
                 : ProviderUsage.unavailable(.grok, reason: .loading)
             async let grokBotUsage = wanted.contains(.grokBot)
-                ? await grokBot.fetch()
+                ? (grokBotCredentialSource == .auth
+                    ? await Self.fetchManaged(AccountKey(.grokBot), claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await grokBot.fetch())
                 : ProviderUsage.unavailable(.grokBot, reason: .loading)
             async let volcengineUsage = wanted.contains(.volcengine)
                 ? await volcengine.fetch(source: volcengineSource)
@@ -574,7 +586,7 @@ final class UsageStore {
             // all. Every one of these went over a newer reading.
             var fetchedExtras: [(String, ProviderUsage, ProviderUsage)] = []
             for account in extras {
-                let raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                let raw = await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
                 guard pass == self.currentPass else { return }
                 fetchedExtras.append((account.id, await UsageCache.shared.reconciled(raw), raw))
             }
@@ -643,6 +655,7 @@ final class UsageStore {
 
         let provider = account.provider
         let source = settings.source(for: account)
+        let credentialSource = settings.credentialSource(for: account)
         let previous = usage[account.id]
         let startedAt = ContinuousClock.now
         // A provider's own pane in Settings is reachable while it is switched
@@ -670,17 +683,21 @@ final class UsageStore {
         Task { [codex, claudeCode, antigravity, cursor, grok, grokBot] in
             let raw: ProviderUsage
             if !account.isPrimary {
-                raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                raw = await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
             } else {
             switch provider {
             case .codex:
-                raw = await codex.fetch(source: source)
+                raw = credentialSource == .auth
+                    ? await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await codex.fetch(source: source)
             case .claudeCode:
                 raw = await claudeCode.fetch(source: source)
             case .antigravity:
                 raw = await antigravity.fetch()
             case .cursor:
-                raw = await cursor.fetch()
+                raw = credentialSource == .auth
+                    ? await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await cursor.fetch()
             case .openCodeGo:
                 raw = await openCode.fetch()
             case .kimiCode:
@@ -694,9 +711,13 @@ final class UsageStore {
             case .copilot:
                 raw = await CopilotUsageService(token: key).fetch()
             case .grok:
-                raw = await grok.fetch()
+                raw = credentialSource == .auth
+                    ? await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await grok.fetch()
             case .grokBot:
-                raw = await grokBot.fetch()
+                raw = credentialSource == .auth
+                    ? await Self.fetchManaged(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
+                    : await grokBot.fetch()
             case .volcengine:
                 raw = await volcengine.fetch(source: source)
             case .commandCode:
@@ -738,14 +759,9 @@ final class UsageStore {
         }
     }
 
-    /// An account Pulse signed in to itself.
-    ///
-    /// Its token is renewed here when it is close to expiring, because nothing
-    /// else will: the CLI keeps its own login fresh, and this one is not that.
-    /// A renewal that fails leaves the account signed out rather than
-    /// reporting a network error — the remedy is the same either way, and it
-    /// is one the user can act on.
-    private static func fetchAdded(
+    /// Reads a Pulse-managed credential for either the built-in primary slot or
+    /// an added account. It never consults the provider local login.
+    private static func fetchManaged(
         _ account: AccountKey,
         claudeCode: ClaudeCodeUsageService,
         codex: CodexUsageService,
@@ -754,40 +770,37 @@ final class UsageStore {
         cursor: CursorUsageService
     ) async -> ProviderUsage {
         guard var credentials = AccountCredentialStore.credentials(for: account) else {
-            return .unavailable(account, reason: .signedOut)
+            return .unavailable(account, reason: .signedOut).recording(.endpoint)
         }
 
         if !credentials.isFresh {
-            // Cursor has no verified browser-login refresh contract. Keep the
-            // stored refresh token for future compatibility, but require a
-            // new Pulse login when its JWT has expired.
-            if account.provider == .cursor {
-                return .unavailable(account, reason: .signedOut)
+            // Cursor Web Login has no verified refresh contract. Keep the
+            // refresh token for compatibility, but ask for a new login.
+            if account.provider == .cursor || account.provider == .grokBot {
+                return .unavailable(account, reason: .signedOut).recording(.endpoint)
             }
             guard let renewed = try? await OAuthLogin.refresh(credentials, for: account.provider) else {
-                return .unavailable(account, reason: .signedOut)
+                return .unavailable(account, reason: .signedOut).recording(.endpoint)
             }
             credentials = renewed
-            // Compare-and-set: a pass that was given up on can still be in
-            // here, and its answer must not replace a newer login.
             if !AccountCredentialStore.renewed(credentials, for: account),
                let current = AccountCredentialStore.credentials(for: account) {
                 credentials = current
             }
         }
 
-        return switch account.provider {
+        let result: ProviderUsage = switch account.provider {
         case .claudeCode: await claudeCode.fetch(account: account, token: credentials.accessToken)
         case .codex: await codex.fetch(account: account, credentials: credentials)
         case .grok: await grok.fetch(account: account, token: credentials.accessToken)
         case .grokBot: await grokBot.fetch(account: account, token: credentials.accessToken)
         case .cursor: await cursor.fetch(account: account, credentials: credentials)
-        // Nothing else can be signed in to, so nothing else gets here.
         case .antigravity, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
              .commandCode, .deepSeek, .devin, .xiaomiMiMo:
             .unavailable(account, reason: .loading)
         }
+        return result.recording(.endpoint)
     }
 
     private func runQueued() {

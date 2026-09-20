@@ -2,9 +2,9 @@
 
 Chrome and why it is AppKit-owned: [../architecture.md](../architecture.md). Localization rules: [../development.md](../development.md).
 
-`SettingsView` / `SettingsRow`: `NavigationSplitView` source list, panes from `SettingsGroup` + `SettingsRow` (title + optional subtitle left, control right). `SettingsPane` includes `.account(AccountKey)`, so every account — each provider’s first, plus any added login — has a sidebar row.
+`SettingsView` / `SettingsRow`: `NavigationSplitView` source list, panes from `SettingsGroup` + `SettingsRow` (title + optional subtitle left, control right). `SettingsPane` includes `.providerManagement`, `.provider(Provider)`, and `.account(AccountKey)`. The sidebar keeps primary providers in Provider Management; the Connected Accounts section contains only extra logins.
 
-The sidebar is `.searchable(placement: .sidebar)` — **not** `.automatic`: this window has no `NSToolbar`, so automatic placement has nowhere to put the field. Accounts match on the provider's name *as well as* the user's label, so a second Claude subscription called "工作" is still found by typing "claude". Matching is `localizedStandardContains` (case- and accent-insensitive, the same comparison Finder searches with). A section with no matches is omitted; nothing matching at all leaves a "No matches" line. The current selection is not cleared by a search that hides it — you keep your place.
+The sidebar is `.searchable(placement: .sidebar)` — **not** `.automatic`: this window has no `NSToolbar`, so automatic placement has nowhere to put the field. Provider Management and extra accounts are searchable; a provider match opens its `.provider(Provider)` pane, while an account match opens its `.account(AccountKey)` pane. Matching is `localizedStandardContains` (case- and accent-insensitive, the same comparison Finder searches with). A section with no matches is omitted; nothing matching at all leaves a "No matches" line.
 
 ## Provider chooser
 
@@ -22,7 +22,7 @@ A joined sentence needs no extra space after a Chinese full stop (`。`). `glass
 
 While Liquid Glass is on, the caption still says to drag the panel by a ring. That is current UI. The historical “glass swallows input” diagnosis is uncertain; [rings-and-surface.md](rings-and-surface.md).
 
-Group order in the general pane: **Floating panel → Notifications → Refresh → Network → Order → Application → Shortcuts → Language**. The groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is nineteen rows. Network follows Refresh because both decide how Pulse gets a new reading. [../networking.md](../networking.md)
+Group order in the general pane: **Floating panel → Notifications → Refresh → Network → Application → Shortcuts → Language**. Provider visibility and panel order live in the separate Provider Management pane. The groups that decide what Pulse does *on its own* sit directly under the panel group, above the housekeeping ones. Notifications was added at the bottom, between Refresh and Language, and that was too far down to find — the panel group alone is nineteen rows. Network follows Refresh because both decide how Pulse gets a new reading. [../networking.md](../networking.md)
 
 
 **Round ends** sits with Size and Spacing, because like them it changes what the rail measures rather than what it says: `AppSettings.usesRoundEnds`, **off** by default. One switch over the rail's ends, the flare into the screen edge, the end padding and the card's tail — they are one idea, and split up they would let a round end sit on the softened style's padding, with the first ring hard against the curve it is meant to be centred in. Off is the rail Pulse shipped with. [panel-geometry.md](panel-geometry.md)
@@ -63,6 +63,14 @@ Two groups. The first is the app: version and update state, where the usage figu
 
 The second is **Credits**, and anything shipped here that somebody else made belongs in it: the design it was built from, the provider marks, and the animated marks' geometry ([../decisions/bot-mark-geometry.md](../decisions/bot-mark-geometry.md)). Crediting the icons and not the vendored artwork beside them would be the inconsistency, not the extra row.
 
+## Provider Management
+
+Provider Management is the home for the primary provider slots. Each row shows enabled state, current connection status, and for Codex, Grok, Cursor, and Grok Bot the selected **Usage source**: Local or Auth. Changing the source is persisted without deleting the other credential. Local reads the provider-owned login; Auth reads only Pulse’s encrypted `accounts.dat` entry.
+
+The panel order list contains primary providers and extra accounts together. Disabling a row leaves it in the order list as **Not shown** so a later re-enable does not reset its position. Dragging uses the visible handle, highlights the drop target, and has Move up / Move down accessibility actions. Reset order clears the custom list.
+
+A primary provider row opens `.provider(Provider)`, which reuses the provider pane without pretending that the primary slot is an extra account. Old `pulse://account/<provider>` links are routed there as well.
+
 ## Provider panes
 
 A provider with one route has that route **named**, and the name belongs to the provider (`Provider.soleRoute`). A ternary (Cursor vs else Antigravity) made the next single-route provider inherit Antigravity’s sentence. Exhaustive `Provider` switch; omit the row when nil.
@@ -81,7 +89,7 @@ The Panel group's rows are per account: show, "Ring shows", ring colour — and,
 
 The sidebar's accounts start in **name order**, not in the order `Provider` happens to be written in — nineteen rows arranged by nothing a reader can see is a list you have to scan rather than one you can look in. An arrangement somebody actually made is kept as it is, and anything it does not mention follows it sorted by name; an added account sorts by its own label, because that is what is written on the row. `AppSettings.orderedAccounts`.
 
-Reorder by **dragging a row, or with the arrows** — both, deliberately. It was arrows only, on the reasoning that four rows is not enough to make a drag worth learning and that an arrow which misses does nothing while a drag which misses does something. The first half stopped being true at nineteen providers plus added accounts: bottom to top is eighteen clicks. The arrows stay because they are the precise one-place move, the only keyboard path, and the only one carrying accessibility labels.
+Reorder the Panel order list by **dragging a row**. The drag handle exposes a drop target and insertion feedback; VoiceOver also has Move up and Move down accessibility actions. Provider rows that are disabled remain in the order list but are marked **Not shown**.
 
 A **Reset order** row closes the group, disabled unless `hasCustomOrder` — which compares the accounts, not whether anything is stored, because dragging a row down and back up leaves a full stored list that matches the default exactly. `resetOrder()` clears `providerOrder` rather than writing the default into it, so a provider added in a later version still arrives at the bottom of the rail instead of being pinned by a list written before it existed.
 
@@ -89,4 +97,4 @@ A **Reset order** row closes the group, disabled unless `hasCustomOrder` — whi
 
 A first account that needs a credential Pulse hasn’t got is seeded with the reason, not `.loading`. `loadAPIKeys` rewrites that only over a placeholder.
 
-Extra-account UI is only for `supportsMultipleAccounts` (Claude Code, Codex, Grok, Grok Bot). How sign-in works: [../providers/README.md](../providers/README.md).
+Extra-account UI is only for `supportsMultipleAccounts` (Claude Code, Codex, Grok, Cursor, Grok Bot). How sign-in works: [../providers/README.md](../providers/README.md).

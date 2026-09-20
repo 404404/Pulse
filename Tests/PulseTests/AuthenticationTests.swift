@@ -16,7 +16,7 @@ struct AuthenticationTests {
         try JSONSerialization.data(withJSONObject: value)
     }
 
-    @Test("Codex and Grok keep their existing device flow configuration")
+    @Test("Codex keeps its device fallback and Grok keeps its device flow configuration")
     func deviceConfigurations() throws {
         let codex = try #require(OAuthLogin.Configuration.of(.codex))
         #expect(codex.authorize.absoluteString == "https://auth.openai.com/oauth/authorize")
@@ -180,6 +180,70 @@ struct AuthenticationTests {
         #expect(CursorAppLogin.expiry(of: token) == Self.future)
     }
 
+    @Test("Codex browser authorization uses its registered loopback redirect and PKCE")
+    func codexBrowserAuthorization() throws {
+        let codex = try #require(OAuthLogin.Configuration.of(.codex))
+        #expect(codex.fixedPort == 1455)
+        #expect(codex.fallbackPort == 1457)
+        let url = try #require(OAuthLogin.authorizeURL(
+            codex,
+            redirect: "http://localhost:1455/auth/callback",
+            challenge: "challenge",
+            state: "state"
+        ))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let values = Dictionary(uniqueKeysWithValues: try #require(components.queryItems).compactMap { item in
+            item.value.map { value in (item.name, value) }
+        })
+        #expect(values["response_type"] == "code")
+        #expect(values["redirect_uri"] == "http://localhost:1455/auth/callback")
+        #expect(values["code_challenge"] == "challenge")
+        #expect(values["code_challenge_method"] == "S256")
+        #expect(values["state"] == "state")
+        #expect(values["device_code"] == nil)
+    }
+
+    @Test("Loopback callbacks reject wrong state, duplicate fields and provider errors")
+    func loopbackCallbackValidation() throws {
+        let valid = try #require(URLComponents(string: "http://localhost:1455/auth/callback?code=abc%2B123&state=state"))
+        #expect(try LoopbackCallback.callbackCode(from: valid, path: "/auth/callback", expectedState: "state") == "abc+123")
+
+        let wrongState = try #require(URLComponents(string: "http://localhost:1455/auth/callback?code=abc&state=other"))
+        #expect(throws: OAuthLogin.Failure.cancelled) {
+            try LoopbackCallback.callbackCode(from: wrongState, path: "/auth/callback", expectedState: "state")
+        }
+
+        let duplicate = try #require(URLComponents(string: "http://localhost:1455/auth/callback?code=abc&code=def&state=state"))
+        #expect(throws: OAuthLogin.Failure.refused("Duplicate callback parameter.")) {
+            try LoopbackCallback.callbackCode(from: duplicate, path: "/auth/callback", expectedState: "state")
+        }
+
+        let refused = try #require(URLComponents(string: "http://localhost:1455/auth/callback?error=access_denied&state=state"))
+        #expect(throws: OAuthLogin.Failure.refused("access_denied")) {
+            try LoopbackCallback.callbackCode(from: refused, path: "/auth/callback", expectedState: "state")
+        }
+    }
+
+    @Test("Credential sources default to Local and persist without changing extras")
+    func credentialSources() {
+        let key = "settings.credentialSources.v1"
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer { defaults.set(previous, forKey: key) }
+
+        let settings = AppSettings(credentialSources: [Provider.codex.rawValue: ProviderCredentialSource.auth.rawValue])
+        #expect(settings.credentialSource(for: AccountKey(.codex)) == .auth)
+        #expect(settings.credentialSource(for: AccountKey(.grokBot)) == .local)
+        #expect(settings.credentialSource(for: AccountKey(.codex, slot: "work")) == .auth)
+
+        settings.setCredentialSource(.local, for: AccountKey(.codex))
+        #expect(settings.credentialSource(for: AccountKey(.codex)) == .local)
+        #expect(defaults.dictionary(forKey: key)?[Provider.codex.rawValue] as? String == ProviderCredentialSource.local.rawValue)
+
+        settings.setCredentialSource(.auth, for: AccountKey(.codex, slot: "work"))
+        #expect(settings.credentialSource(for: AccountKey(.codex, slot: "work")) == .auth)
+    }
+
     @Test("Newer managed credentials win and duplicate identities compare without display names")
     func renewalAndDeduplicationPolicy() {
         let old = AccountCredentials(
@@ -225,6 +289,7 @@ struct AuthenticationTests {
         #expect(Provider.codex.supportsPulseManagedLogin)
         #expect(Provider.grok.supportsPulseManagedLogin)
         #expect(Provider.cursor.supportsPulseManagedLogin)
+        #expect(Provider.grokBot.supportsPulseManagedLogin)
         #expect(Provider.cursor.supportsMultipleAccounts)
         #expect(Provider.grokBot.supportsMultipleAccounts)
     }

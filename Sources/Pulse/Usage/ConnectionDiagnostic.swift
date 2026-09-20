@@ -41,6 +41,7 @@ struct ConnectionDiagnostic: Equatable, Sendable {
     static func report(
         account: AccountKey,
         preference: UsageSource,
+        credentialSource: ProviderCredentialSource = .local,
         displayed: ProviderUsage,
         diagnostic: Self?,
         version: String,
@@ -55,6 +56,7 @@ struct ConnectionDiagnostic: Equatable, Sendable {
             "provider: \(account.provider.rawValue)",
             "accountType: \(account.isPrimary ? "primary" : "added")",
             "preference: \(account.isPrimary ? preference.rawValue : "endpoint")",
+            "credentialSource: " + credentialSource.rawValue,
             "checkedAt: \(stamp(diagnostic?.checkedAt))",
             "checkResult: \(diagnostic.map { token($0.state) } ?? "notChecked")",
             "displayState: \(token(displayed.state))",

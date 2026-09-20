@@ -15,6 +15,8 @@ Provider routes, credentials, cookies, and extra-account OAuth belong in [provid
 
 ## Settings window
 
+When Settings opens, `SettingsWindowController` temporarily switches the process to `.regular` so Pulse appears in the Dock and can be brought back from another app. Closing that one window restores `.accessory`; minimizing or switching apps does not. `applicationShouldHandleReopen` reuses the existing window, deminiaturizes it, and brings it to the front. `LSUIElement` remains true, so launch still has no Dock icon.
+
 Hand-rolled `SettingsWindowController`, not SwiftUI’s `Settings` scene: an `.accessory` app must `NSApp.activate` or the window opens behind everything.
 
 - `.fullSizeContentView` so content blurs under the title bar as it scrolls.
@@ -34,7 +36,7 @@ Four, and the menu bar is only one of them — an icon in a full menu bar is not
 
 ## Settings navigation from other apps
 
-`PulseLink` parses `pulse://settings`, `pulse://integrations`, and `pulse://account/<encoded-id>`. `AppDelegate.application(_:open:)` passes accepted links to `SettingsWindowController`, whose `SettingsNavigation` owns the selected pane shared with SwiftUI. A request id lets a repeated link clear sidebar search and return to the heading, even when the pane is already selected. Account targets must exist in `settings.allAccounts`; links never create a slot or run a repair. `Scripts/bundle.sh` registers the `pulse` URL scheme in `CFBundleURLTypes`. Setup and examples: [integrations.md](integrations.md).
+`PulseLink` parses `pulse://settings`, `pulse://integrations`, and `pulse://account/<encoded-id>`. `AppDelegate.application(_:open:)` passes accepted links to `SettingsWindowController`, whose `SettingsNavigation` owns the selected pane shared with SwiftUI. A request id lets a repeated link clear sidebar search and return to the heading, even when the pane is already selected. Primary account links route to `.provider(Provider)`; extra-account links route to `.account(AccountKey)`. Account targets must exist in `settings.allAccounts`; links never create a slot or run a repair. `Scripts/bundle.sh` registers the `pulse` URL scheme in `CFBundleURLTypes`. Setup and examples: [integrations.md](integrations.md).
 
 ## Panel content (where it lives)
 
@@ -45,18 +47,18 @@ SwiftUI tree inside the panel: `FloatingUsagePanelView` → `UsageDockView` (rai
 `AppSettings` is `@Observable`, stored in `UserDefaults`. `onChange` is how AppKit hears about it.
 
 - Once monitoring starts the **rail** must not be empty (nothing to hover, nothing to grab). Before the initial choice, an empty account set is valid and the panel is not created. An added account alone is a valid rail; rebuilding from `Provider.allCases` must never overwrite that choice.
-- `providerOrder` / `orderedAccounts`: never trust the stored list as written. Drop unknown names; append accounts the list does not mention **in name order** after whatever arrangement is stored. The settings sidebar follows the same order. Reorder does **not** call `onChange` — that path refetches everything.
+- `providerOrder` / `orderedAccounts`: never trust the stored list as written. Drop unknown names; append accounts the list does not mention **in name order** after whatever arrangement is stored. Provider Management shows the complete panel order, including disabled rows marked Not shown; the Connected Accounts sidebar section shows only extra accounts. Reorder does not call `onChange` — that path refetches everything.
 - **First run and upgrade offers** are resolved by `ProviderSelection.restore`, called from `AppSettings.restored`. First launch enables nothing. An empty or invalid saved set returns to the chooser, never to an everything-on fallback. Discovery suggests providers but enables none; see the startup contract below.
 - A provider with nothing fetched yet is **not** seeded `.loading` (`UsageStore.initialState`). Loading that never resolves is a lie on its settings pane.
 - Each provider pane has its own refresh control. A switched-off provider is **not** fetched on the timer; a deliberate press on its pane still can.
-- Where a provider has more than one route, which one is used is `AppSettings.source(for:)` (`UsageSource`). `.automatic` is the default: take the primary route when it can, fall back when it cannot. Pinning reports failure instead of quietly answering from elsewhere. Which routes exist: [providers/README.md](providers/README.md).
+- Where a provider has more than one route, which one is used is `AppSettings.source(for:)` (`UsageSource`). `.automatic` is the default: take the primary route when it can, fall back when it cannot. For Codex, Grok, Cursor, and Grok Bot, `AppSettings.credentialSource(for:)` is a separate Local/Auth choice; Auth only reads `AccountCredentialStore` and never falls back to Local. Which routes exist: [providers/README.md](providers/README.md).
 - `networkProxy` is one persisted value rather than four independently firing fields. It configures Pulse's external sessions and supported helper processes, then `onChange` queues a full refresh. Scope and the Sparkle exception: [networking.md](networking.md).
 - Colour means usage, not brand (`UsageTint`, optional per-account `RingTint`). Spent colour still wins. Spent comes from the **provider’s flags**, not from crossing 100%. See [ui/rings-and-surface.md](ui/rings-and-surface.md).
 - The rail ring shows one window: closest to limit, or a pin (`AppSettings.pinnedWindows`). Resolved at display time.
 
-`AccountKey` is provider plus which account. The primary account’s id is the provider’s `rawValue` so stored prefs and cache files need no migration. Extra accounts: Claude Code, Codex, Grok, Grok Bot only (`supportsMultipleAccounts`). How those logins work: [providers/README.md](providers/README.md).
+`AccountKey` is provider plus which account. The primary account’s id is the provider’s `rawValue` so stored prefs and cache files need no migration. Extra accounts: Claude Code, Codex, Grok, Cursor, and Grok Bot (`supportsMultipleAccounts`). How those logins work: [providers/README.md](providers/README.md).
 
-Keys pasted in Settings live in `keys.dat` (`APIKeyStore`), not `UserDefaults`. Extra-account tokens live in `accounts.dat`. Both are AES-GCM, owner-only, key derived from the Mac.
+Keys pasted in Settings live in `keys.dat` (`APIKeyStore`), not `UserDefaults`. Pulse-managed primary Auth and extra-account tokens live in `accounts.dat` (`AccountCredentialStore`). Both are AES-GCM, owner-only, key derived from the Mac.
 
 ## Provider choice before monitoring
 

@@ -92,6 +92,28 @@ struct RailSlotTests {
         #expect(AppSettings(providerOrder: ["nothing.like.this"]).hasCustomOrder == false)
     }
 
+    @Test("Drag order moves primary and extra accounts and reset clears it")
+    func dragOrderMovesAndResets() {
+        let extra = ExtraAccount(provider: .codex, slot: "work", label: "Work")
+        let settings = AppSettings(extraAccounts: [extra], providerOrder: [
+            AccountKey(.codex).id, extra.key.id, AccountKey(.grok).id
+        ])
+        let originalFirst = settings.orderedAccounts.first!
+        let originalLast = settings.orderedAccounts.last!
+
+        settings.move(originalLast, onto: originalFirst)
+        #expect(settings.orderedAccounts.first == originalLast)
+        settings.move(originalLast, onto: originalFirst)
+        #expect(settings.orderedAccounts[1] == originalLast)
+
+        let beforeInvalid = settings.orderedAccounts
+        settings.move(AccountKey(.codex, slot: "missing"), onto: originalFirst)
+        #expect(settings.orderedAccounts == beforeInvalid)
+
+        settings.resetOrder()
+        #expect(settings.hasCustomOrder == false)
+    }
+
     @Test("An account that is not split gets exactly one slot")
     func unsplitAccountIsOneSlot() {
         let slots = RailSlot.rail(

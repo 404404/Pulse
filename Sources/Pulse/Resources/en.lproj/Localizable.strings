@@ -643,3 +643,27 @@
 "Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access.";
 "Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt.";
 "Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt.";
+
+
+/* Native account authentication */
+"Duplicate callback parameter." = "Duplicate callback parameter.";
+"Authentication callback port is already in use." = "Authentication callback port is already in use.";
+"Credential source" = "Credential source";
+"Connected Accounts" = "Connected Accounts";
+"Panel order" = "Panel order";
+"Drag to reorder" = "Drag to reorder";
+"Move up" = "Move up";
+"Move down" = "Move down";
+"Usage source" = "Usage source";
+"Uses the provider local login. Pulse does not change it." = "Uses the provider local login. Pulse does not change it.";
+"Pulse login is missing. Sign in to use Auth." = "Pulse login is missing. Sign in to use Auth.";
+"Clears only the Pulse-managed credential. The provider login is unchanged." = "Clears only the Pulse-managed credential. The provider login is unchanged.";
+"Connected accounts" = "Connected accounts";
+"Use device-code login instead" = "Use device-code login instead";
+"Connect Grok Bot account" = "Connect Grok Bot account";
+"Opens Codex browser authorization and stores the account only in Pulse." = "Opens Codex browser authorization and stores the account only in Pulse.";
+"Provider Management" = "Provider Management";
+"Local" = "Local";
+"Auth" = "Auth";
+"Reads the provider local login. Pulse never changes it." = "Reads the provider local login. Pulse never changes it.";
+"Reads the Pulse-managed login stored separately from the provider." = "Reads the Pulse-managed login stored separately from the provider.";

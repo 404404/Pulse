@@ -37,7 +37,7 @@ enum UsageSource: String, CaseIterable, Identifiable, Sendable {
     /// The desktop route is the **primary** account's alone: what it reads is
     /// the one session the desktop app is signed in with, which belongs to
     /// whichever account that is — not to a second account Pulse signed in to
-    /// itself. Offered on an added account it would be a choice `fetchAdded`
+    /// itself. Offered on an added account it would be a choice `fetchManaged`
     /// silently ignores, which is a control that lies about what it did.
     static func options(for account: AccountKey) -> [UsageSource] {
         allCases.filter { $0 != .desktopApp || (account.provider == .claudeCode && account.isPrimary) }
@@ -135,6 +135,29 @@ enum UsageSource: String, CaseIterable, Identifiable, Sendable {
         case (_, .cursor):
             // Never shown, for the same reason: one route.
             .localized("Reads your account's limits with the login Cursor saved.")
+        }
+    }
+}
+
+/// Which credential source a primary managed provider uses. This is deliberately
+/// separate from `UsageSource` (route preference) and `UsageRoute` (actual origin).
+enum ProviderCredentialSource: String, CaseIterable, Codable, Identifiable, Sendable {
+    case local
+    case auth
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .local: .localized("Local")
+        case .auth: .localized("Auth")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .local: .localized("Reads the provider local login. Pulse never changes it.")
+        case .auth: .localized("Reads the Pulse-managed login stored separately from the provider.")
         }
     }
 }

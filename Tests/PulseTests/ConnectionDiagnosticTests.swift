@@ -83,9 +83,10 @@ struct ConnectionDiagnosticTests {
         let raw = reading(account, at: Date()).recording(.desktopSession, after: earlier.attempts)
         let diagnostic = ConnectionDiagnostic(raw: raw, displayed: raw, previous: nil, now: Date())
         let report = ConnectionDiagnostic.report(account: account, preference: .automatic,
-            displayed: raw, diagnostic: diagnostic, version: "test", now: Date())
+            credentialSource: .auth, displayed: raw, diagnostic: diagnostic, version: "test", now: Date())
         #expect(!report.contains("private-"))
         #expect(report.contains("accountType: added"))
+        #expect(report.contains("credentialSource: auth"))
         #expect(report.contains("endpoint -> claudeLoginExpired"))
         #expect(report.contains("desktopSession -> live"))
         #expect(!report.contains("0.5"))

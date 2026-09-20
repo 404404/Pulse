@@ -32,7 +32,7 @@ struct GrokBotUsageService: Sendable {
         guard let session = CursorAppLogin.session(from: token) else {
             return .unavailable(account, reason: .signedOut)
         }
-        return await fetch(session: session, for: account)
+        return await fetch(session: session, for: account, managed: true)
     }
 
     func fetch() async -> ProviderUsage {
@@ -49,7 +49,7 @@ struct GrokBotUsageService: Sendable {
         return await fetch(session: session, for: AccountKey(.grokBot))
     }
 
-    private func fetch(session: CursorAppLogin.Session, for account: AccountKey) async -> ProviderUsage {
+    private func fetch(session: CursorAppLogin.Session, for account: AccountKey, managed: Bool = false) async -> ProviderUsage {
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
         request.setValue(session.cookie, forHTTPHeaderField: "Cookie")
@@ -78,7 +78,7 @@ struct GrokBotUsageService: Sendable {
 
         switch (response as? HTTPURLResponse)?.statusCode {
         case 200: break
-        case 401, 403: return .unavailable(account, reason: account.isPrimary ? .cursorLoginExpired : .signedOut)
+        case 401, 403: return .unavailable(account, reason: managed ? .signedOut : (account.isPrimary ? .cursorLoginExpired : .signedOut))
         case 429: return .unavailable(account, reason: .rateLimited)
         default: return .unavailable(account, reason: .serverError)
         }

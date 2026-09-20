@@ -6,13 +6,13 @@ Service: [`CodexUsageService.swift`](../../Sources/Pulse/Providers/CodexUsageSer
 
 ## Authentication sources
 
-The primary account is **Local Codex**. Pulse reads `~/.codex/auth.json` and may fall back to `codex app-server`; this path remains the default and is never replaced by a Pulse connection.
+The primary account starts as **Local Codex**. Provider Management can switch it to Auth explicitly. Local reads `~/.codex/auth.json` and may fall back to `codex app-server`; Auth reads only Pulse’s `accounts.dat` credential and never consults the local file or app-server.
 
-**Connect ChatGPT account** creates a Pulse-managed Codex account through the existing OpenAI device authorization flow. Its credentials live in encrypted `accounts.dat`, are fetched independently, and can be refreshed by Pulse. Removing that account does not edit `~/.codex/auth.json` or sign out the Codex CLI.
+**Connect ChatGPT account** opens the Codex browser authorization-code flow with PKCE. If that flow fails, Settings offers the existing OpenAI device-code fallback. Its credentials live in encrypted `accounts.dat`, are fetched independently, and can be refreshed by Pulse. Removing that account does not edit `~/.codex/auth.json` or sign out the Codex CLI.
 
-The two account types can be enabled together: the local account keeps its original `AccountKey`, while each Pulse-managed account has its own added-account key.
+Local and Auth can be selected without deleting either credential. The primary account keeps its original `AccountKey`, while each extra Pulse-managed account has its own added-account key.
 
-## Routes (primary)
+## Routes (primary Local source)
 
 Default `.automatic`:
 
@@ -56,9 +56,9 @@ The HTTP endpoint uses Pulse's Network setting: macOS system proxy by default, o
 
 `codex app-server` is different: it is a child process rather than a `URLSession`. Manual HTTP starts it with `HTTP_PROXY` / `HTTPS_PROXY`, manual SOCKS5 with `ALL_PROXY`, and both with loopback in `NO_PROXY`. Changing the proxy shuts down a running helper; the next request starts it with the new environment. Follow System injects nothing and preserves the environment Pulse itself inherited. Full boundary: [../networking.md](../networking.md).
 
-## Added accounts
+## Auth source and added accounts
 
-`fetch(account:credentials:)` uses Pulse’s stored tokens. Extra-account sign-in is **device code**, not redirect. Full published scopes, including connector scopes that looked optional and were not. See [authentication.md](authentication.md).
+`fetch(account:credentials:)` uses only Pulse’s stored tokens. The primary Auth source and every added account use the same isolated endpoint path; neither consults `~/.codex/auth.json` or the app-server. Normal sign-in is browser authorization code with PKCE. The existing device flow remains available as a deliberate fallback. Full published scopes, including connector scopes that looked optional and were not. See [authentication.md](authentication.md).
 
 Codex’s usage endpoint wants the account named in a header of its own; `AccountCredentials.accountID` is taken from the token.
 

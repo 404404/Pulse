@@ -15,7 +15,7 @@ final class SettingsNavigation {
         case .account(let account):
             // A removed account's old link must not recreate an account pane.
             guard accounts.contains(account) else { return }
-            pane = .account(account)
+            pane = account.isPrimary ? .provider(account.provider) : .account(account)
         }
         requestID = UUID()
     }

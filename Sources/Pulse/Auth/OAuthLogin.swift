@@ -46,6 +46,7 @@ enum OAuthLogin {
         /// one; nil takes any free port, which is what a public client that
         /// accepts arbitrary loopback redirects allows.
         let fixedPort: UInt16?
+        let fallbackPort: UInt16?
         let redirectPath: String
         let extraAuthorizeItems: [URLQueryItem]
         /// Anthropic's token endpoint takes JSON; OpenAI's takes a form, which
@@ -56,11 +57,10 @@ enum OAuthLogin {
         /// extra field is not harmless — see the note on the scopes.
         let exchangeCarriesState: Bool
         /// A device-code sign-in, where there is one, and which shape it
-        /// takes. It is the better flow to be on wherever it is offered: no
-        /// local port to collide with the CLI's own sign-in, and nothing
-        /// redirected back to this Mac at all. For Codex it is also the only
-        /// path that works — the redirect flow, matched field for field to the
-        /// published client, still ended on OpenAI's own error page.
+        /// takes. It remains available as a provider-specific fallback; the
+        /// normal Codex path is browser authorization code with PKCE. No
+        /// device-code implementation should be inferred from another
+        /// provider’s wire format.
         let deviceFlow: DeviceFlow?
 
         static func of(_ provider: Provider) -> Configuration? {
@@ -79,6 +79,7 @@ enum OAuthLogin {
                     // be reporting on.
                     scopes: ["user:profile"],
                     fixedPort: nil,
+                    fallbackPort: nil,
                     redirectPath: "/callback",
                     extraAuthorizeItems: [URLQueryItem(name: "code", value: "true")],
                     sendsJSON: true,
@@ -99,6 +100,7 @@ enum OAuthLogin {
                     // Not negotiable: this client is registered for exactly
                     // this loopback address, so the port has to be free.
                     fixedPort: 1455,
+                    fallbackPort: 1457,
                     redirectPath: "/auth/callback",
                     extraAuthorizeItems: [
                         URLQueryItem(name: "id_token_add_organizations", value: "true"),
@@ -136,6 +138,7 @@ enum OAuthLogin {
                     // client does accept an arbitrary loopback port at
                     // `/callback`, which is what the CLI uses.
                     fixedPort: nil,
+                    fallbackPort: nil,
                     redirectPath: "/callback",
                     extraAuthorizeItems: [],
                     sendsJSON: false,
@@ -173,7 +176,7 @@ enum OAuthLogin {
         var message: String {
             switch self {
             case .unsupported: .localized("This provider can't be signed in to from Pulse.")
-            case .portBusy: .localized("Finish or close the sign-in already running, then try again.")
+            case .portBusy: .localized("Authentication callback port is already in use.")
             case .cancelled: .localized("Sign-in was cancelled.")
             case .timedOut: .localized("The browser didn't come back. If it showed an error, try again.")
             case .refused(let why): why
@@ -530,6 +533,37 @@ enum OAuthLogin {
 
     // MARK: - Signing in
 
+    private static func callbackListener(_ configuration: Configuration, expecting state: String) async throws -> LoopbackCallback {
+        var ports: [UInt16?] = []
+        if let fixed = configuration.fixedPort { ports.append(fixed) }
+        if let fallback = configuration.fallbackPort, fallback != configuration.fixedPort { ports.append(fallback) }
+        if ports.isEmpty { ports.append(nil) }
+        var lastBusy = configuration.fixedPort ?? 0
+
+        for port in ports {
+            do {
+                let candidate = try LoopbackCallback(port: port, path: configuration.redirectPath)
+                do {
+                    try await candidate.start(expecting: state)
+                    return candidate
+                } catch {
+                    candidate.stop()
+                    throw error
+                }
+            } catch let failure as Failure {
+                if case .portBusy(let busy) = failure {
+                    lastBusy = busy
+                    continue
+                }
+                throw failure
+            } catch {
+                throw error
+            }
+        }
+
+        throw Failure.portBusy(lastBusy)
+    }
+
     /// Opens the provider's consent page and waits for the browser to come
     /// back. Returns the tokens; storing them is the caller's business.
     static func signIn(to provider: Provider) async throws -> AccountCredentials {
@@ -539,13 +573,12 @@ enum OAuthLogin {
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
         let state = randomToken()
 
-        let listener = try LoopbackCallback(port: configuration.fixedPort, path: configuration.redirectPath)
+        let listener = try await callbackListener(configuration, expecting: state)
         defer { listener.stop() }
 
         // Bound first: the port is part of the redirect address, and the
         // redirect address is part of the request the browser is about to be
         // sent to. Both halves of the exchange have to name the same one.
-        try await listener.start(expecting: state)
         let redirect = "http://localhost:\(listener.port)\(configuration.redirectPath)"
         guard let url = authorizeURL(configuration, redirect: redirect, challenge: challenge, state: state) else {
             throw Failure.unsupported

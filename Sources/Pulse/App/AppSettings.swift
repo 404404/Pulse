@@ -412,6 +412,17 @@ final class AppSettings {
         }
     }
 
+    /// Which credential source a primary managed provider uses, keyed by provider.
+    /// A missing entry intentionally means Local so existing installations keep
+    /// reading the provider application login after the upgrade.
+    var credentialSources: [String: String] {
+        didSet {
+            guard credentialSources != oldValue else { return }
+            UserDefaults.standard.set(credentialSources, forKey: Key.credentialSources)
+            onChange?()
+        }
+    }
+
     /// How often the figures are re-read.
     var refreshInterval: RefreshInterval {
         didSet {
@@ -893,6 +904,7 @@ final class AppSettings {
         language: AppLanguage = .system,
         pinnedWindows: [String: String] = [:],
         sources: [String: String] = [:],
+        credentialSources: [String: String] = [:],
         sessionBrowsers: [String: String] = [:],
         ringTints: [String: String] = [:],
         botMarks: [String: Bool] = [:],
@@ -938,6 +950,7 @@ final class AppSettings {
         self.language = language
         self.pinnedWindows = pinnedWindows
         self.sources = sources
+        self.credentialSources = credentialSources
         self.sessionBrowsers = sessionBrowsers
         self.ringTints = ringTints
         self.botMarks = botMarks
@@ -976,6 +989,22 @@ final class AppSettings {
     func source(for account: AccountKey) -> UsageSource {
         let stored = sources[account.id].flatMap(UsageSource.init(rawValue:)) ?? .automatic
         return UsageSource.options(for: account).contains(stored) ? stored : .automatic
+    }
+
+    /// Which credential path is configured for this account. Extra accounts always
+    /// use the Pulse-managed store; only a primary managed provider can switch.
+    func credentialSource(for account: AccountKey) -> ProviderCredentialSource {
+        guard account.isPrimary else { return .auth }
+        guard account.provider.supportsPulseManagedLogin else { return .local }
+        return credentialSources[account.provider.rawValue]
+            .flatMap(ProviderCredentialSource.init(rawValue:)) ?? .local
+    }
+
+    func setCredentialSource(_ source: ProviderCredentialSource, for account: AccountKey) {
+        guard account.isPrimary, account.provider.supportsPulseManagedLogin else { return }
+        var updated = credentialSources
+        updated[account.provider.rawValue] = source.rawValue
+        credentialSources = updated
     }
 
     /// The balance this account should be warned below, or nil for no warning.
@@ -1199,6 +1228,7 @@ final class AppSettings {
             language: language,
             pinnedWindows: defaults.dictionary(forKey: Key.pinnedWindows) as? [String: String] ?? [:],
             sources: defaults.dictionary(forKey: Key.sources) as? [String: String] ?? [:],
+            credentialSources: defaults.dictionary(forKey: Key.credentialSources) as? [String: String] ?? [:],
             sessionBrowsers: defaults.dictionary(forKey: Key.sessionBrowsers) as? [String: String] ?? [:],
             ringTints: defaults.dictionary(forKey: Key.ringTints) as? [String: String] ?? [:],
             botMarks: defaults.dictionary(forKey: Key.botMarks) as? [String: Bool] ?? [:],
@@ -1320,6 +1350,7 @@ final class AppSettings {
         static let language = "settings.language"
         static let pinnedWindows = "settings.pinnedWindows"
         static let sources = "settings.sources"
+        static let credentialSources = "settings.credentialSources.v1"
         static let sessionBrowsers = "settings.sessionBrowsers"
         static let ringTints = "settings.ringTints"
         // Bumped when `.automatic` arrived and became the default: the old

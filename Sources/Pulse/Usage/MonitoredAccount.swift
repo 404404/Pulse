@@ -173,9 +173,9 @@ extension Provider {
     /// Whether Pulse can obtain and hold a login for this provider.
     var supportsPulseManagedLogin: Bool {
         switch self {
-        case .codex, .grok, .cursor: true
+        case .codex, .grok, .cursor, .grokBot: true
         case .claudeCode, .antigravity, .openCodeGo, .kimiCode, .ollamaCloud,
-             .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grokBot,
+             .zai, .glmCoding, .minimax, .minimaxCN, .copilot,
              .volcengine, .commandCode, .deepSeek, .devin, .xiaomiMiMo: false
         }
     }

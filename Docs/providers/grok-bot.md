@@ -16,6 +16,8 @@ Do **not** read Grok Bot from `~/.grok/auth.json` or `cli-chat-proxy.grok.com`. 
 
 ## Current route
 
+The built-in primary slot can also select Auth in Provider Management. Local uses the Cursor login already stored on this Mac; Auth uses only the Pulse-managed credential in `accounts.dat`, built through `CursorWebLogin` with `redirectTarget=sand`. Auth never falls back to the local Cursor credential.
+
 `POST https://cursor.com/api/dashboard/get-sand-usage-status` with the cookie `CursorAppLogin` already makes (or the same cookie shape built from an extra-account token). Body `{}`. Headers include `Origin: https://cursor.com` — an endpoint that checks origin refuses a request without one. Redirects refused (Cookie would otherwise follow to another host).
 
 Cursor’s protocol calls this product “Sand”. Not public API; can change without notice. Fields are decoded optionally so a shape change costs the reading rather than a crash.

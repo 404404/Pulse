@@ -2,7 +2,7 @@
 
 Service: [`CursorUsageService.swift`](../../Sources/Pulse/Providers/CursorUsageService.swift). Login: [`CursorAppLogin.swift`](../../Sources/Pulse/Auth/CursorAppLogin.swift).
 
-Cursor supports two independent credential sources. The primary **Local Cursor** account reads the editor token from `state.vscdb`; a **Connect Cursor account** action creates a Pulse-managed added account through `CursorWebLogin` with `redirectTarget=cli`.
+Cursor supports two independent credential sources. The built-in primary slot starts as **Local Cursor** and can be switched in Provider Management to **Auth**, which reads only the Pulse-managed credential in `accounts.dat`. Local reads the editor token from `state.vscdb`; Auth and **Connect Cursor account** use `CursorWebLogin` with `redirectTarget=cli`. Switching back to Local does not delete the Auth credential.
 
 The managed flow does not require Cursor or `state.vscdb` to be installed. It stores only the returned credentials in encrypted `accounts.dat`, builds the same session cookie from the JWT, and uses the shared usage parser. Removing it cannot modify the editor database or sign out Cursor.
 
