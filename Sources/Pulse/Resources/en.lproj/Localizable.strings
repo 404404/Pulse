@@ -615,3 +615,29 @@
 "Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "Uses a browser session you import in Settings. Importing may ask for browser Keychain access.";
 "Uses the GitHub login you connect in Settings. No Keychain prompt." = "Uses the GitHub login you connect in Settings. No Keychain prompt.";
 "Uses only the API key you enter in Settings. No Keychain prompt." = "Uses only the API key you enter in Settings. No Keychain prompt.";
+
+/* Pulse-managed authentication */
+"Local application login" = "Local application login";
+"Pulse-managed login" = "Pulse-managed login";
+"Uses the provider's saved login. Pulse will not change it." = "Uses the provider's saved login. Pulse will not change it.";
+"Connected directly in Pulse and stored separately from the provider's login." = "Connected directly in Pulse and stored separately from the provider's login.";
+"Authentication source" = "Authentication source";
+"Connection status" = "Connection status";
+"Uses the provider local application login." = "Uses the provider local application login.";
+"Pulse login is missing. Reconnect this account." = "Pulse login is missing. Reconnect this account.";
+"Pulse holds this login separately from the provider login." = "Pulse holds this login separately from the provider login.";
+"Connected" = "Connected";
+"Reauthentication required" = "Reauthentication required";
+"Token expires" = "Token expires";
+"Last successful refresh" = "Last successful refresh";
+"Reconnect account" = "Reconnect account";
+"Opens the provider sign-in page." = "Opens the provider sign-in page.";
+"Connect ChatGPT account" = "Connect ChatGPT account";
+"Connect Grok account" = "Connect Grok account";
+"Connect Cursor account" = "Connect Cursor account";
+"Signs in with Codex device authorization and stores the account only in Pulse." = "Signs in with Codex device authorization and stores the account only in Pulse.";
+"Signs in with Grok device authorization and stores the account only in Pulse." = "Signs in with Grok device authorization and stores the account only in Pulse.";
+"Opens Cursor browser login and stores the account only in Pulse." = "Opens Cursor browser login and stores the account only in Pulse.";
+"Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access.";
+"Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt.";
+"Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt.";

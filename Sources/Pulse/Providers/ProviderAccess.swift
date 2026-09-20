@@ -8,13 +8,13 @@ extension Provider {
         case .claudeCode:
             .localized("Reads Claude Code's saved login from Keychain or its credentials file. May ask for Keychain access, including Claude Desktop's cookie storage.")
         case .codex:
-            .localized("Reads ~/.codex/auth.json and may run codex app-server with its saved login. Pulse does not request Keychain access.")
+            .localized("Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access.")
         case .antigravity:
             .localized("Reads the running editor's local language server and connection token. No Keychain prompt.")
         case .cursor, .grokBot:
-            .localized("Reads the login saved in Cursor's local database. No Keychain prompt.")
+            .localized("Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt.")
         case .grok:
-            .localized("Reads the login saved in ~/.grok/auth.json. No Keychain prompt.")
+            .localized("Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt.")
         case .openCodeGo:
             .localized("Uses a key entered in Settings, or reads OpenCode's auth.json. No Keychain prompt.")
         case .glmCoding:

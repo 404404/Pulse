@@ -21,6 +21,13 @@ struct AccountCredentials: Codable, Equatable, Sendable {
     /// A minute's headroom: a token that expires while the request is in
     /// flight comes back refused, and the retry costs more than renewing early.
     var isFresh: Bool { expiresAt.timeIntervalSinceNow > 60 }
+
+    /// A provider-stable identity used for managed-account de-duplication.
+    /// Missing identity is deliberately not treated as a match.
+    var stableIdentity: String? {
+        guard let accountID, !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return accountID
+    }
 }
 
 /// Where those logins are kept: encrypted, in Pulse's own folder, one file for
@@ -31,45 +38,53 @@ struct AccountCredentials: Codable, Equatable, Sendable {
 /// should not be able to take both down at once.
 enum AccountCredentialStore {
     private static let purpose = "Pulse account logins"
+    private static let lock = NSLock()
 
     private static var file: URL {
         PulseStorage.directory.appending(path: "accounts.dat")
     }
 
     static func credentials(for account: AccountKey) -> AccountCredentials? {
-        load()?[account.id]
+        lock.lock()
+        defer { lock.unlock() }
+        return load()?[account.id]
     }
 
-    /// Stores a login, or forgets one when `nil` is passed.
+    /// Stores a login, or forgets one when nil is passed.
     @discardableResult
     static func set(_ credentials: AccountCredentials?, for account: AccountKey) -> Bool {
-        // A file that exists but won't decode is not an empty one. Treating it
-        // as empty would silently throw away every other account's login and
-        // report success — the same trap `APIKeyStore` was fixed for.
-        guard var all = load() else { return false }
-
-        all[account.id] = credentials
-        return save(all)
+        lock.lock()
+        defer { lock.unlock() }
+        return setLocked(credentials, for: account)
     }
 
     /// Stores a renewal, unless what is already there outlives it.
-    ///
-    /// **A renewal is not an ordinary write.** Two passes can be renewing the
-    /// same account at once — the second only because the first was given up
-    /// on for taking too long — and the abandoned one answers last. Written
-    /// plainly, that puts the older login back over the newer, and a provider
-    /// that rotates refresh tokens will then refuse it: the account is signed
-    /// out by the act of keeping it signed in. Which one lives longer is the
-    /// question, and both of them answer it.
-    ///
-    /// Sign-out still goes through `set(_:for:)`, which is unconditional:
-    /// forgetting a login is a decision, not a race.
     @discardableResult
     static func renewed(_ credentials: AccountCredentials, for account: AccountKey) -> Bool {
-        if let existing = self.credentials(for: account), existing.expiresAt >= credentials.expiresAt {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard shouldAcceptRenewal(existing: load()?[account.id], candidate: credentials) else {
             return false
         }
-        return set(credentials, for: account)
+        return setLocked(credentials, for: account)
+    }
+
+    /// Pure compare-and-set policy for concurrent-refresh tests.
+    static func shouldAcceptRenewal(existing: AccountCredentials?, candidate: AccountCredentials) -> Bool {
+        guard let existing else { return true }
+        return existing.expiresAt < candidate.expiresAt
+    }
+
+    static func hasSameStableIdentity(_ lhs: AccountCredentials, _ rhs: AccountCredentials) -> Bool {
+        guard let left = lhs.stableIdentity, let right = rhs.stableIdentity else { return false }
+        return left == right
+    }
+
+    private static func setLocked(_ credentials: AccountCredentials?, for account: AccountKey) -> Bool {
+        guard var all = load() else { return false }
+        all[account.id] = credentials
+        return save(all)
     }
 
     // MARK: - The file

@@ -615,3 +615,29 @@
 "Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "設定で読み込んだブラウザのログインセッションを使います。読み込み時にブラウザのキーチェーンへのアクセスを求めることがあります。";
 "Uses the GitHub login you connect in Settings. No Keychain prompt." = "設定で連携した GitHub のログインを使います。キーチェーンの確認はありません。";
 "Uses only the API key you enter in Settings. No Keychain prompt." = "設定で入力した API キーだけを使います。キーチェーンの確認はありません。";
+
+/* Pulse-managed authentication */
+"Local application login" = "ローカルアプリのログイン";
+"Pulse-managed login" = "Pulse 管理のログイン";
+"Uses the provider's saved login. Pulse will not change it." = "サービス側に保存されたログインを使います。Pulse は変更しません。";
+"Connected directly in Pulse and stored separately from the provider's login." = "Pulse から直接接続し、サービス側のログインとは別に保存します。";
+"Authentication source" = "認証元";
+"Connection status" = "接続状態";
+"Uses the provider local application login." = "サービスのローカルアプリのログインを使います。";
+"Pulse login is missing. Reconnect this account." = "Pulse のログインがありません。このアカウントを再接続してください。";
+"Pulse holds this login separately from the provider login." = "Pulse はこのログインをサービス側のログインとは別に保持します。";
+"Connected" = "接続済み";
+"Reauthentication required" = "再認証が必要";
+"Token expires" = "トークンの有効期限";
+"Last successful refresh" = "最後に成功した更新";
+"Reconnect account" = "アカウントを再接続";
+"Opens the provider sign-in page." = "サービスのログインページを開きます。";
+"Connect ChatGPT account" = "ChatGPT アカウントを接続";
+"Connect Grok account" = "Grok アカウントを接続";
+"Connect Cursor account" = "Cursor アカウントを接続";
+"Signs in with Codex device authorization and stores the account only in Pulse." = "Codex のデバイス認証でログインし、アカウントは Pulse にのみ保存します。";
+"Signs in with Grok device authorization and stores the account only in Pulse." = "Grok のデバイス認証でログインし、アカウントは Pulse にのみ保存します。";
+"Opens Cursor browser login and stores the account only in Pulse." = "Cursor のブラウザログインを開き、アカウントは Pulse にのみ保存します。";
+"Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "Codex に保存されたログイン、または Pulse に直接接続した ChatGPT アカウントを使えます。Pulse はキーチェーンへのアクセスを求めません。";
+"Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "Cursor エディタのローカルログイン、または Pulse に直接接続した Cursor アカウントを使えます。キーチェーンの確認はありません。";
+"Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "Grok CLI に保存されたログイン、または Pulse に直接接続した Grok アカウントを使えます。キーチェーンの確認はありません。";

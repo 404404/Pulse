@@ -574,7 +574,7 @@ final class UsageStore {
             // all. Every one of these went over a newer reading.
             var fetchedExtras: [(String, ProviderUsage, ProviderUsage)] = []
             for account in extras {
-                let raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot)
+                let raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
                 guard pass == self.currentPass else { return }
                 fetchedExtras.append((account.id, await UsageCache.shared.reconciled(raw), raw))
             }
@@ -670,7 +670,7 @@ final class UsageStore {
         Task { [codex, claudeCode, antigravity, cursor, grok, grokBot] in
             let raw: ProviderUsage
             if !account.isPrimary {
-                raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot)
+                raw = await Self.fetchAdded(account, claudeCode: claudeCode, codex: codex, grok: grok, grokBot: grokBot, cursor: cursor)
             } else {
             switch provider {
             case .codex:
@@ -750,25 +750,30 @@ final class UsageStore {
         claudeCode: ClaudeCodeUsageService,
         codex: CodexUsageService,
         grok: GrokUsageService,
-        grokBot: GrokBotUsageService
+        grokBot: GrokBotUsageService,
+        cursor: CursorUsageService
     ) async -> ProviderUsage {
         guard var credentials = AccountCredentialStore.credentials(for: account) else {
             return .unavailable(account, reason: .signedOut)
         }
 
         if !credentials.isFresh {
-            // Grok Bot lands in the `else` deliberately: `OAuthLogin` has no
-            // configuration for it, because its sign-in is not OAuth and no
-            // refresh endpoint was found in Cursor's own client. Its tokens
-            // run **sixty days** (measured), so signing in again twice a year
-            // is the honest answer rather than a renewal that cannot happen.
+            // Cursor has no verified browser-login refresh contract. Keep the
+            // stored refresh token for future compatibility, but require a
+            // new Pulse login when its JWT has expired.
+            if account.provider == .cursor {
+                return .unavailable(account, reason: .signedOut)
+            }
             guard let renewed = try? await OAuthLogin.refresh(credentials, for: account.provider) else {
                 return .unavailable(account, reason: .signedOut)
             }
             credentials = renewed
             // Compare-and-set: a pass that was given up on can still be in
             // here, and its answer must not replace a newer login.
-            AccountCredentialStore.renewed(credentials, for: account)
+            if !AccountCredentialStore.renewed(credentials, for: account),
+               let current = AccountCredentialStore.credentials(for: account) {
+                credentials = current
+            }
         }
 
         return switch account.provider {
@@ -776,8 +781,9 @@ final class UsageStore {
         case .codex: await codex.fetch(account: account, credentials: credentials)
         case .grok: await grok.fetch(account: account, token: credentials.accessToken)
         case .grokBot: await grokBot.fetch(account: account, token: credentials.accessToken)
+        case .cursor: await cursor.fetch(account: account, credentials: credentials)
         // Nothing else can be signed in to, so nothing else gets here.
-        case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
+        case .antigravity, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
              .commandCode, .deepSeek, .devin, .xiaomiMiMo:
             .unavailable(account, reason: .loading)

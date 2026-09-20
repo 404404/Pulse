@@ -675,18 +675,19 @@ enum OAuthLogin {
 
     /// A token reply turned into a login. Shared with the device-code poll,
     /// which reaches the same endpoint by a different grant.
-    private static func credentials(from json: [String: Any]) throws -> AccountCredentials {
+    static func credentials(from json: [String: Any]) throws -> AccountCredentials {
         guard
-            let access = json["access_token"] as? String,
-            let lifetime = json["expires_in"] as? Double
+            let access = (json["access_token"] as? String) ?? (json["accessToken"] as? String),
+            !access.isEmpty,
+            let lifetime = number(json["expires_in"] ?? json["expiresIn"])
         else { throw Failure.unreadableReply }
 
         return AccountCredentials(
             accessToken: access,
-            refreshToken: json["refresh_token"] as? String ?? "",
+            refreshToken: (json["refresh_token"] as? String) ?? (json["refreshToken"] as? String) ?? "",
             expiresAt: Date().addingTimeInterval(lifetime),
             accountName: accountName(in: json),
-            accountID: accountID(in: access)
+            accountID: accountID(in: json, accessToken: access)
         )
     }
 
@@ -706,20 +707,36 @@ enum OAuthLogin {
         }
         if let account = json["account"] as? [String: Any] {
             if let email = account["email_address"] as? String, !email.isEmpty { return email }
+            if let email = account["email"] as? String, !email.isEmpty { return email }
         }
+        if let email = json["email"] as? String, !email.isEmpty { return email }
         return nil
     }
 
-    /// The account the token was issued for, which Codex's usage endpoint
-    /// wants in a header. It is nested in a namespaced claim rather than at
-    /// the top level, and only the access token carries it.
-    private static func accountID(in accessToken: String) -> String? {
-        guard
-            let claims = claims(inJWT: accessToken),
-            let auth = claims["https://api.openai.com/auth"] as? [String: Any]
-        else { return nil }
+    /// Stable remote identity: Codex account id first, then the OIDC subject.
+    private static func accountID(in json: [String: Any], accessToken: String) -> String? {
+        if let account = json["account"] as? [String: Any] {
+            if let id = account["account_id"] as? String, !id.isEmpty { return id }
+            if let id = account["id"] as? String, !id.isEmpty { return id }
+        }
+        if let tokenClaims = (json["id_token"] as? String).flatMap(claims(inJWT:)) {
+            if let auth = tokenClaims["https://api.openai.com/auth"] as? [String: Any],
+               let id = auth["chatgpt_account_id"] as? String, !id.isEmpty { return id }
+            if let id = tokenClaims["chatgpt_account_id"] as? String, !id.isEmpty { return id }
+            if let subject = tokenClaims["sub"] as? String, !subject.isEmpty { return subject }
+        }
+        guard let tokenClaims = claims(inJWT: accessToken) else { return nil }
+        if let auth = tokenClaims["https://api.openai.com/auth"] as? [String: Any],
+           let id = auth["chatgpt_account_id"] as? String, !id.isEmpty { return id }
+        if let id = tokenClaims["chatgpt_account_id"] as? String, !id.isEmpty { return id }
+        if let subject = tokenClaims["sub"] as? String, !subject.isEmpty { return subject }
+        return nil
+    }
 
-        return auth["chatgpt_account_id"] as? String
+    private static func number(_ value: Any?) -> Double? {
+        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? String { return Double(value) }
+        return nil
     }
 
     private static func claims(inJWT token: String) -> [String: Any]? {

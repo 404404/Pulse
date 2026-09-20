@@ -23,22 +23,30 @@ struct CursorUsageService: Sendable {
 
     func fetch() async -> ProviderUsage {
         guard let session = CursorAppLogin.session() else {
-            // A token that is stored but spent is a login gone stale, not an
-            // absent one — so say what actually helps.
             return .unavailable(
                 .cursor,
                 reason: CursorAppLogin.hasStoredToken() ? .cursorLoginExpired : .cursorSignInRequired
             )
         }
+        return await fetch(session: session, for: AccountKey(.cursor))
+    }
 
+    /// Reads a Pulse-managed Cursor account without consulting the editor
+    /// database. The request and parser are shared with the local path.
+    func fetch(account: AccountKey, credentials: AccountCredentials) async -> ProviderUsage {
+        guard let session = CursorAppLogin.session(from: credentials.accessToken) else {
+            return .unavailable(account, reason: .signedOut)
+        }
+        return await fetch(session: session, for: account)
+    }
+
+    private func fetch(session: CursorAppLogin.Session, for account: AccountKey) async -> ProviderUsage {
         var request = URLRequest(url: Self.endpoint)
         request.setValue(session.cookie, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
 
-        // The session goes out as a `Cookie` header, which `URLSession` will
-        // happily carry across a redirect to another host — unlike
-        // `Authorization`, which it strips. So redirects are refused outright.
+        // Refuse redirects so a Cookie header cannot be forwarded elsewhere.
         let configuration = NetworkSession.configured(.ephemeral)
         configuration.httpShouldSetCookies = false
         configuration.httpCookieStorage = nil
@@ -47,30 +55,27 @@ struct CursorUsageService: Sendable {
         defer { http.invalidateAndCancel() }
 
         guard let (data, response) = try? await http.data(for: request) else {
-            return .unavailable(.cursor, reason: .unreachable)
+            return .unavailable(account, reason: .unreachable)
         }
 
         switch (response as? HTTPURLResponse)?.statusCode {
         case 200: break
-        // The token parsed and had months left on it, and the account still
-        // refused it — so it is the login that has gone bad, not the absence
-        // of one, and the remedy is to open Cursor rather than to sign in.
-        case 401, 403: return .unavailable(.cursor, reason: .cursorLoginExpired)
-        case 429: return .unavailable(.cursor, reason: .rateLimited)
-        default: return .unavailable(.cursor, reason: .serverError)
+        case 401, 403: return .unavailable(account, reason: account.isPrimary ? .cursorLoginExpired : .signedOut)
+        case 429: return .unavailable(account, reason: .rateLimited)
+        default: return .unavailable(account, reason: .serverError)
         }
 
         guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
-            return .unavailable(.cursor, reason: .unreadableReply)
+            return .unavailable(account, reason: .unreadableReply)
         }
 
         let windows = Self.windows(from: reply)
         guard !windows.isEmpty else {
-            return .unavailable(.cursor, reason: .noLimitsReported)
+            return .unavailable(account, reason: .noLimitsReported)
         }
 
         return ProviderUsage(
-            account: AccountKey(.cursor),
+            account: account,
             windows: windows,
             observedAt: Date(),
             state: .live,

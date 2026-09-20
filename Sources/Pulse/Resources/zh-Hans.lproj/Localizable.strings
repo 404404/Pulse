@@ -615,3 +615,29 @@
 "Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "使用你在设置里导入的浏览器登录会话。导入时可能请求浏览器的钥匙串授权。";
 "Uses the GitHub login you connect in Settings. No Keychain prompt." = "使用你在设置里连接的 GitHub 登录。不弹钥匙串。";
 "Uses only the API key you enter in Settings. No Keychain prompt." = "只使用你在设置里填入的 API key。不弹钥匙串。";
+
+/* Pulse-managed authentication */
+"Local application login" = "本地应用登录";
+"Pulse-managed login" = "Pulse 管理的登录";
+"Uses the provider's saved login. Pulse will not change it." = "使用服务自身保存的登录信息。Pulse 不会修改它。";
+"Connected directly in Pulse and stored separately from the provider's login." = "直接在 Pulse 中连接，并与服务自身的登录信息分开保存。";
+"Authentication source" = "认证来源";
+"Connection status" = "连接状态";
+"Uses the provider local application login." = "使用服务本地应用的登录信息。";
+"Pulse login is missing. Reconnect this account." = "缺少 Pulse 登录信息，请重新连接此账号。";
+"Pulse holds this login separately from the provider login." = "Pulse 将此登录信息与服务自身的登录信息分开保存。";
+"Connected" = "已连接";
+"Reauthentication required" = "需要重新认证";
+"Token expires" = "令牌到期";
+"Last successful refresh" = "上次成功刷新";
+"Reconnect account" = "重新连接账号";
+"Opens the provider sign-in page." = "打开服务的登录页面。";
+"Connect ChatGPT account" = "连接 ChatGPT 账号";
+"Connect Grok account" = "连接 Grok 账号";
+"Connect Cursor account" = "连接 Cursor 账号";
+"Signs in with Codex device authorization and stores the account only in Pulse." = "通过 Codex 设备授权登录，并仅将账号保存在 Pulse 中。";
+"Signs in with Grok device authorization and stores the account only in Pulse." = "通过 Grok 设备授权登录，并仅将账号保存在 Pulse 中。";
+"Opens Cursor browser login and stores the account only in Pulse." = "打开 Cursor 浏览器登录，并仅将账号保存在 Pulse 中。";
+"Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "可以使用 Codex 保存的登录信息，也可以直接在 Pulse 中连接 ChatGPT 账号。Pulse 不请求钥匙串授权。";
+"Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "可以使用 Cursor 编辑器的本地登录信息，也可以直接在 Pulse 中连接 Cursor 账号。不弹钥匙串提示。";
+"Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "可以使用 Grok CLI 保存的登录信息，也可以直接在 Pulse 中连接 Grok 账号。不弹钥匙串提示。";

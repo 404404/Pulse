@@ -47,7 +47,7 @@ The reply prices the *upgrade* (“$500 of Grok Bot usage each week with Pro+”
 
 ## Extra accounts
 
-Not OAuth. [`CursorWebLogin`](../../Sources/Pulse/Auth/CursorWebLogin.swift): login page + poll. PKCE hashes the **base64url-encoded** verifier string. Tokens ~60 days; no refresh endpoint in Cursor’s client. See [authentication.md](authentication.md).
+Not OAuth. Grok Bot continues to use `CursorLoginTarget.grokBot` and `redirectTarget=sand`; Cursor itself uses the separate `CursorLoginTarget.cursor` and `redirectTarget=cli` path. This split is required so adding Cursor login does not change Grok Bot behavior. [`CursorWebLogin`](../../Sources/Pulse/Auth/CursorWebLogin.swift): login page + poll. PKCE hashes the **base64url-encoded** verifier string. Tokens ~60 days; no refresh endpoint in Cursor’s client. See [authentication.md](authentication.md).
 
 Pulse does not read the standalone app’s `sand-secrets.json`.
 

@@ -615,3 +615,29 @@
 "Uses a browser session you import in Settings. Importing may ask for browser Keychain access." = "使用你在設定中匯入的瀏覽器登入工作階段。匯入時可能要求瀏覽器的鑰匙圈存取權限。";
 "Uses the GitHub login you connect in Settings. No Keychain prompt." = "使用你在設定中連結的 GitHub 登入。不會出現鑰匙圈提示。";
 "Uses only the API key you enter in Settings. No Keychain prompt." = "只使用你在設定中輸入的 API 金鑰。不會出現鑰匙圈提示。";
+
+/* Pulse-managed authentication */
+"Local application login" = "本機應用程式登入";
+"Pulse-managed login" = "Pulse 管理的登入";
+"Uses the provider's saved login. Pulse will not change it." = "使用服務商儲存的登入資訊。Pulse 不會修改它。";
+"Connected directly in Pulse and stored separately from the provider's login." = "直接在 Pulse 中連接，並與服務商的登入資訊分開保存。";
+"Authentication source" = "驗證來源";
+"Connection status" = "連線狀態";
+"Uses the provider local application login." = "使用服務商本機應用程式的登入資訊。";
+"Pulse login is missing. Reconnect this account." = "缺少 Pulse 登入資訊，請重新連接此帳戶。";
+"Pulse holds this login separately from the provider login." = "Pulse 將此登入資訊與服務商的登入資訊分開保存。";
+"Connected" = "已連線";
+"Reauthentication required" = "需要重新驗證";
+"Token expires" = "權杖到期";
+"Last successful refresh" = "上次成功重新整理";
+"Reconnect account" = "重新連接帳戶";
+"Opens the provider sign-in page." = "開啟服務商的登入頁面。";
+"Connect ChatGPT account" = "連接 ChatGPT 帳戶";
+"Connect Grok account" = "連接 Grok 帳戶";
+"Connect Cursor account" = "連接 Cursor 帳戶";
+"Signs in with Codex device authorization and stores the account only in Pulse." = "透過 Codex 裝置授權登入，並只將帳戶保存在 Pulse 中。";
+"Signs in with Grok device authorization and stores the account only in Pulse." = "透過 Grok 裝置授權登入，並只將帳戶保存在 Pulse 中。";
+"Opens Cursor browser login and stores the account only in Pulse." = "開啟 Cursor 瀏覽器登入，並只將帳戶保存在 Pulse 中。";
+"Can use Codex's saved login or a ChatGPT account connected directly in Pulse. Pulse does not request Keychain access." = "可以使用 Codex 儲存的登入資訊，也可以直接在 Pulse 中連接 ChatGPT 帳戶。Pulse 不會要求鑰匙圈存取權限。";
+"Can use Cursor's local editor login or a Cursor account connected directly in Pulse. No Keychain prompt." = "可以使用 Cursor 編輯器的本機登入資訊，也可以直接在 Pulse 中連接 Cursor 帳戶。不會出現鑰匙圈提示。";
+"Can use Grok CLI's saved login or a Grok account connected directly in Pulse. No Keychain prompt." = "可以使用 Grok CLI 儲存的登入資訊，也可以直接在 Pulse 中連接 Grok 帳戶。不會出現鑰匙圈提示。";

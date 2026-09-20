@@ -2265,6 +2265,59 @@ struct SettingsView: View {
         return account.isPrimary && account.provider.soleRoute != nil
     }
 
+
+    @ViewBuilder
+    private func authenticationStatus(for account: AccountKey) -> some View {
+        let credential = account.isPrimary ? nil : AccountCredentialStore.credentials(for: account)
+        let lastSuccess = store.diagnostics[account.id]?.lastSuccessfulReadingAt
+
+        SettingsRow(
+            String.localized("Authentication source"),
+            subtitle: account.authenticationSource.detail
+        ) {
+            Text(account.authenticationSource.title)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: SettingsLayout.controlWidth, alignment: .trailing)
+        }
+
+        SettingsRow(
+            String.localized("Connection status"),
+            subtitle: account.isPrimary
+                ? String.localized("Uses the provider local application login.")
+                : (credential == nil
+                    ? String.localized("Pulse login is missing. Reconnect this account.")
+                    : String.localized("Pulse holds this login separately from the provider login."))
+        ) {
+            Text(account.isPrimary || credential?.isFresh == true
+                ? String.localized("Connected")
+                : String.localized("Reauthentication required"))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
+
+        if let credential {
+            SettingsRow(String.localized("Token expires")) {
+                Text(credential.expiresAt, style: .relative)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        SettingsRow(String.localized("Last successful refresh")) {
+            if let lastSuccess {
+                Text(lastSuccess, style: .relative)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(String.localized("Not recorded"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     /// Signing in to another subscription of the same provider, and getting
     /// rid of one.
     ///
@@ -2276,12 +2329,20 @@ struct SettingsView: View {
     private func accounts(for account: AccountKey) -> some View {
         if account.provider.supportsMultipleAccounts {
             SettingsGroup(String.localized("Accounts")) {
+                if account.provider.supportsPulseManagedLogin {
+                    authenticationStatus(for: account)
+                    SettingsRowDivider()
+                }
                 Group {
                     SettingsRow(
-                        account.isPrimary ? String.localized("Add another account") : String.localized("Sign in again…"),
+                        account.isPrimary
+                            ? Self.connectTitle(for: account.provider)
+                            : String.localized("Reconnect account"),
                         // The one thing someone should know before they start:
                         // whose name is on the page that opens.
-                        subtitle: String.localized("Opens the provider's own sign-in page.")
+                        subtitle: account.isPrimary && account.provider.supportsPulseManagedLogin
+                            ? Self.connectSubtitle(for: account.provider)
+                            : String.localized("Opens the provider sign-in page.")
                     ) {
                         // One sign-in at a time, and its Cancel, code and
                         // error belong to the provider it was started for:
@@ -2295,7 +2356,9 @@ struct SettingsView: View {
                                 devicePrompt = nil
                             }
                         } else {
-                            Button(String.localized("Sign in…")) {
+                            Button(account.isPrimary && account.provider.supportsPulseManagedLogin
+                                ? Self.connectTitle(for: account.provider)
+                                : String.localized("Reconnect account")) {
                                 signIn(to: account.provider, replacing: account.isPrimary ? nil : account)
                             }
                             .disabled(signingIn != nil)
@@ -2488,12 +2551,11 @@ struct SettingsView: View {
             }
             do {
                 let credentials: AccountCredentials
-                if provider == .grokBot {
-                    // Cursor has no OAuth for a third party to drive: its page
-                    // takes a challenge and a nonce and the tokens are polled
-                    // for afterwards. Nothing comes back to this Mac and there
-                    // is no code to type, so this branch shows neither.
-                    credentials = try await CursorWebLogin.signIn()
+                if provider == .cursor {
+                    credentials = try await CursorWebLogin.signIn(target: .cursor)
+                } else if provider == .grokBot {
+                    // Grok Bot keeps its existing Cursor target.
+                    credentials = try await CursorWebLogin.signIn(target: .grokBot)
                 } else if OAuthLogin.usesDeviceCode(provider) {
                     // A code shown on the provider's own page. No local
                     // port to collide with the CLI's sign-in, and nothing
@@ -2517,9 +2579,10 @@ struct SettingsView: View {
                 // two subscriptions are not both offered as "Codex".
                 try Task.checkCancellation()
                 if let existing, !settings.allAccounts.contains(existing) { return }
-                let added = existing ?? settings.addAccount(provider, label: Self.label(for: credentials, provider: provider, in: settings))
+                let target = existing ?? existingManagedAccount(for: provider, credentials: credentials)
+                let added = target ?? settings.addAccount(provider, label: Self.label(for: credentials, provider: provider, in: settings))
                 guard AccountCredentialStore.set(credentials, for: added) else {
-                    if existing == nil { settings.removeAccount(added) }
+                    if target == nil { settings.removeAccount(added) }
                     signInError = (provider, String.localized("Couldn't save the login on this Mac."))
                     return
                 }
@@ -2534,6 +2597,34 @@ struct SettingsView: View {
                 if !Task.isCancelled { signInError = (provider, String.localized("Sign-in was cancelled.")) }
             }
         }
+    }
+
+    private static func connectTitle(for provider: Provider) -> String {
+        switch provider {
+        case .codex: String.localized("Connect ChatGPT account")
+        case .grok: String.localized("Connect Grok account")
+        case .cursor: String.localized("Connect Cursor account")
+        default: String.localized("Add another account")
+        }
+    }
+
+    private static func connectSubtitle(for provider: Provider) -> String {
+        switch provider {
+        case .codex: String.localized("Signs in with Codex device authorization and stores the account only in Pulse.")
+        case .grok: String.localized("Signs in with Grok device authorization and stores the account only in Pulse.")
+        case .cursor: String.localized("Opens Cursor browser login and stores the account only in Pulse.")
+        default: String.localized("Opens the provider sign-in page.")
+        }
+    }
+
+    private func existingManagedAccount(for provider: Provider, credentials: AccountCredentials) -> AccountKey? {
+        guard credentials.stableIdentity != nil else { return nil }
+        return settings.extraAccounts.first { account in
+            guard account.provider == provider,
+                  let existing = AccountCredentialStore.credentials(for: account.key)
+            else { return false }
+            return AccountCredentialStore.hasSameStableIdentity(existing, credentials)
+        }?.key
     }
 
     /// What to call a newly added account.

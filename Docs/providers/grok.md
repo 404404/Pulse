@@ -12,6 +12,14 @@ Issue history: [Pulse #9](https://github.com/qunqin24/Pulse/issues/9).
 
 Since June 2026 a paid plan spends **one weekly pool** across every Grok product — web chat, Imagine, voice, the API, and the CLI. The reply’s `productUsage` lists `GrokChat` beside `GrokTasks`. There is no CLI-specific figure to show. Naming the ring after the CLI would claim one. The breakdown is **not** drawn as separate windows: they are shares of one limit.
 
+## Authentication sources
+
+The primary account is **Local Grok**. Pulse reads `~/.grok/auth.json` and uses the CLI token without copying it to `AccountCredentialStore`. Pulse never invokes Grok CLI logout or writes the CLI file.
+
+**Connect Grok account** starts the existing RFC 8628 device flow in Pulse. The resulting account is Pulse-managed, stored in encrypted `accounts.dat`, refreshed independently, and fetched without reading `~/.grok/auth.json`.
+
+Local Grok and one or more Pulse-managed Grok accounts can coexist as separate account keys.
+
 ## Primary credential
 
 Borrow the OIDC login Grok Build’s CLI stored in `~/.grok/auth.json`. Nothing is held for the primary account.

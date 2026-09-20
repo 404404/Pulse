@@ -2,9 +2,11 @@
 
 Service: [`CursorUsageService.swift`](../../Sources/Pulse/Providers/CursorUsageService.swift). Login: [`CursorAppLogin.swift`](../../Sources/Pulse/Auth/CursorAppLogin.swift).
 
-Extra accounts are **not** supported, and that is not an oversight. The same Cursor web sign-in Grok Bot uses would work, but Cursor’s usage summary is read from the **editor’s** stored login and a second account has no editor behind it. Grok Bot needs nothing but the token.
+Cursor supports two independent credential sources. The primary **Local Cursor** account reads the editor token from `state.vscdb`; a **Connect Cursor account** action creates a Pulse-managed added account through `CursorWebLogin` with `redirectTarget=cli`.
 
-`keepsLocalTranscripts` is false. One named route: “Cursor’s own login”.
+The managed flow does not require Cursor or `state.vscdb` to be installed. It stores only the returned credentials in encrypted `accounts.dat`, builds the same session cookie from the JWT, and uses the shared usage parser. Removing it cannot modify the editor database or sign out Cursor.
+
+`keepsLocalTranscripts` is false. The local route remains “Cursor’s own login”; managed accounts use the stored Pulse credential route.
 
 ## Credential
 
@@ -20,7 +22,7 @@ The row is normally TEXT but has been seen as a BLOB. When it is, it is UTF-16 w
 
 Redirects are refused. The session goes out as a `Cookie` header, which `URLSession` will carry across a redirect to another host (unlike `Authorization`, which it strips).
 
-Nothing here renews the editor token. Cursor does that the next time it is used. A minute’s expiry headroom is applied before a request is sent.
+Nothing here renews the local editor token. Cursor does that the next time it is used. Pulse-managed tokens use JWT `exp` with a minute of headroom; the returned refresh token is stored only for compatibility, because `exchange_user_api_key` was not verified as a browser-login refresh route. An expired managed token reports reauthentication required instead of making an unverified request.
 
 ## Windows
 

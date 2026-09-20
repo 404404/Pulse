@@ -2,8 +2,8 @@ import AppKit
 import CryptoKit
 import Foundation
 
-/// Signing Pulse in to a second Cursor account, which is what a second Grok
-/// Bot allowance is.
+/// Signing Pulse in to a Cursor account. The same flow also powers a second
+/// Grok Bot allowance, with a different login target.
 ///
 /// **This is not OAuth, and calling it that would set the wrong expectations.**
 /// Cursor has no authorize/token pair for a third party to drive — it has a
@@ -25,6 +25,18 @@ import Foundation
 /// that looks like the user's fault.
 ///
 /// **Not public API**, the same caveat every other borrowed route carries.
+enum CursorLoginTarget: String, Equatable, Sendable {
+    case cursor
+    case grokBot
+
+    var redirectTarget: String {
+        switch self {
+        case .cursor: "cli"
+        case .grokBot: "sand"
+        }
+    }
+}
+
 enum CursorWebLogin {
     /// What the user is sent to, and what the poll needs afterwards.
     struct Attempt: Sendable, Equatable {
@@ -43,10 +55,13 @@ enum CursorWebLogin {
     private static let patience: TimeInterval = 300
     private static let interval: Duration = .seconds(2)
 
-    static func start() -> Attempt? {
-        let verifier = OAuthLogin.randomToken()
+    static func start(target: CursorLoginTarget = .grokBot) -> Attempt? {
+        makeAttempt(target: target, uuid: UUID().uuidString.lowercased(), verifier: OAuthLogin.randomToken())
+    }
+
+    /// Deterministic constructor used by protocol tests and by the live flow.
+    static func makeAttempt(target: CursorLoginTarget, uuid: String, verifier: String) -> Attempt? {
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
-        let uuid = UUID().uuidString.lowercased()
 
         guard var components = URLComponents(
             url: website.appending(path: "loginDeepControl"),
@@ -57,19 +72,18 @@ enum CursorWebLogin {
             URLQueryItem(name: "challenge", value: challenge),
             URLQueryItem(name: "uuid", value: uuid),
             URLQueryItem(name: "mode", value: "login"),
-            // What the page says it is signing in to. "sand" is Cursor's own
-            // name for Grok Bot, and it is the one this account is for.
-            URLQueryItem(name: "redirectTarget", value: "sand"),
-            URLQueryItem(name: "supportsSelectedTeamLogin", value: "true"),
-        ]
+            URLQueryItem(name: "redirectTarget", value: target.redirectTarget),
+        ] + (target == .grokBot
+            ? [URLQueryItem(name: "supportsSelectedTeamLogin", value: "true")]
+            : [])
 
         guard let url = components.url else { return nil }
         return Attempt(loginURL: url, uuid: uuid, verifier: verifier)
     }
 
     /// Opens the page and waits for the browser to finish with it.
-    static func signIn() async throws -> AccountCredentials {
-        guard let attempt = start() else { throw OAuthLogin.Failure.unsupported }
+    static func signIn(target: CursorLoginTarget = .grokBot) async throws -> AccountCredentials {
+        guard let attempt = start(target: target) else { throw OAuthLogin.Failure.unsupported }
 
         _ = await MainActor.run { NSWorkspace.shared.open(attempt.loginURL) }
 
@@ -122,34 +136,51 @@ enum CursorWebLogin {
             return nil
         }
 
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return try Self.parsePollResponse(status: (response as? HTTPURLResponse)?.statusCode ?? 0, data: data)
+    }
+
+    /// Parses one poll reply without performing network I/O.
+    ///
+    /// Cursor has returned both camelCase and snake_case field names. A 404 is
+    /// the normal not-ready state; a 403 is fatal only when it carries an
+    /// explicit provider error. Other non-success responses remain retryable.
+    static func parsePollResponse(status: Int, data: Data) throws -> AccountCredentials? {
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
 
-        if status == 403, let said = json?["error"] as? String {
-            throw OAuthLogin.Failure.refused("auth/poll: \(said)")
+        if status == 404 { return nil }
+        if status == 403,
+           let said = (json?["error"] as? String) ?? (json?["error_description"] as? String),
+           !said.isEmpty {
+            throw OAuthLogin.Failure.refused("auth/poll: " + said)
         }
         guard status == 200 else { return nil }
 
         guard
-            let access = json?["accessToken"] as? String,
-            let refresh = json?["refreshToken"] as? String
+            let access = (json?["accessToken"] as? String) ?? (json?["access_token"] as? String),
+            !access.isEmpty
         else { throw OAuthLogin.Failure.unreadableReply }
 
-        // The reply states no lifetime, and does not need to: the token says
-        // so itself, and Cursor issues these for sixty days.
         guard let expiry = CursorAppLogin.expiry(of: access) else {
             throw OAuthLogin.Failure.unreadableReply
         }
+
+        let refresh = (json?["refreshToken"] as? String)
+            ?? (json?["refresh_token"] as? String)
+            ?? ""
+        let accountID = [
+            json?["userId"] as? String,
+            json?["authId"] as? String,
+            json?["user_id"] as? String
+        ]
+        .compactMap { value in value }
+        .first { value in !value.isEmpty } ?? CursorAppLogin.accountID(of: access)
 
         return AccountCredentials(
             accessToken: access,
             refreshToken: refresh,
             expiresAt: expiry,
-            // The token carries no email, so there is nothing here to name the
-            // account with — it gets a number, and the name is the user's to
-            // change in Settings like any other.
             accountName: nil,
-            accountID: nil
+            accountID: accountID
         )
     }
 }

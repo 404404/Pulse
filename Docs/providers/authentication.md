@@ -12,7 +12,7 @@ This is not a catalogue of secrets. Client ids below are public (they ship in ev
 |---|---|---|
 | Pasted API key or Ollama session cookie | `keys.dat` (`APIKeyStore`) | Nobody. User pastes or re-reads the browser. |
 | Copilot GitHub token | `keys.dat` as well (`keepsOwnCredential`) | Sign in again. Device tokens here are not the CLI refresh path. |
-| Extra-account logins (Claude Code, Codex, Grok, Grok Bot) | `accounts.dat` (`AccountCredentialStore`) | `UsageStore.fetchAdded` via `OAuthLogin.refresh` for the three OAuth providers. Grok Bot has **no** refresh endpoint in Cursor’s client. |
+| Extra-account logins (Claude Code, Codex, Grok, Cursor, Grok Bot) | `accounts.dat` (`AccountCredentialStore`) | `UsageStore.fetchAdded` renews Claude Code, Codex, and Grok through `OAuthLogin.refresh`; Cursor and Grok Bot keep any returned refresh token for compatibility but have no verified browser-login refresh route. |
 
 Both files are AES-GCM boxes in Pulse’s Application Support folder, owner-only, key derived from this Mac rather than stored. `LocalSecrets` is shared so there is one copy of the crypto; a different derived key per purpose means a box from one store cannot be opened by the other.
 
@@ -26,19 +26,27 @@ Pulse does **not** keep a Keychain item of its own for these. Chromium / Claude 
 
 Measured: a Codex access token lives on the order of 240 hours; a Claude Code one about five; a Grok CLI token about six hours. Copying the credential would leave the account you are *not* currently using dead within an afternoon. The only way to renew a copied token is the refresh token the CLI is also relying on — which, if the provider rotates it, signs the user out of their own CLI.
 
-Pulse’s extra-account login has its own refresh token and does not read or write what the CLI stored. That separation is the reason for signing in.
+Claude Code, Codex, and Grok managed logins have their own refresh token and do not read or write what the CLI stored. Cursor and Grok Bot managed logins are also isolated in `accounts.dat`, but Pulse does not guess a refresh request for either browser-login flow. That separation is the reason for signing in.
 
-`fetchAdded` renews when the access token is within a minute of expiry. A renewal that fails reports `.signedOut`, not a network error: the remedy is the same and the user can act on it. That case names no provider.
+`fetchAdded` renews OAuth-managed credentials when the access token is within a minute of expiry. Cursor and Grok Bot instead report `.signedOut` when their browser-login token is no longer usable. A renewal that fails reports `.signedOut`, not a network error: the remedy is the same and the user can act on it.
 
 ## Extra accounts: who can have them
 
-[`Provider.supportsMultipleAccounts`](../../Sources/Pulse/Usage/MonitoredAccount.swift) is **`.claudeCode`, `.codex`, `.grok`, `.grokBot`**. Not two. Not Cursor.
+[`Provider.supportsMultipleAccounts`](../../Sources/Pulse/Usage/MonitoredAccount.swift) is **`.claudeCode`, `.codex`, `.grok`, `.cursor`, `.grokBot`**. Cursor is now supported through its separate browser-login target.
 
 - Claude Code / Codex / Grok: `OAuthLogin` public CLI clients.
-- Grok Bot: **not OAuth** — [`CursorWebLogin`](../../Sources/Pulse/Auth/CursorWebLogin.swift) (Cursor’s login page + poll).
-- Cursor itself is omitted on purpose. See [cursor.md](cursor.md) and [grok-bot.md](grok-bot.md).
+- Cursor: `CursorWebLogin` with `redirectTarget=cli`, stored in `AccountCredentialStore`.
+- Grok Bot: **not OAuth** — [`CursorWebLogin`](../../Sources/Pulse/Auth/CursorWebLogin.swift) with `redirectTarget=sand`.
 
 `AccountKey` for the first account is the provider’s raw value (`claudeCode`, not `claudeCode#…`). Added accounts get a slot generated once and never reused, so removing one and adding another cannot inherit settings.
+
+## Local application login versus Pulse-managed login
+
+The first account for each provider is the local application account. Pulse reads it from the provider-owned store and does not sign it out, refresh it, or write back to it. For Codex, Grok, and Cursor this means `~/.codex/auth.json`, `~/.grok/auth.json`, or Cursor’s `state.vscdb`.
+
+A Pulse-managed account is an added account created by the Connect action in Settings. Its access and refresh credentials are stored only in encrypted `accounts.dat` through `AccountCredentialStore`; it never copies or replaces the local application credential. Removing or signing out an added account deletes only that selected entry from `accounts.dat`.
+
+The same provider can therefore have one local account and multiple Pulse-managed accounts. They remain separate `AccountKey` values and are fetched through their own credential routes.
 
 ## OAuth: Claude Code, Codex, Grok
 
@@ -120,6 +128,17 @@ Pulse cannot register an OAuth app with GitHub, so it drives the VS Code Copilot
 GitHub’s codes last fifteen minutes; polling patience is 900 seconds so Pulse does not report failure while the code on screen is still good.
 
 The token is stored in `keys.dat` (`keepsOwnCredential`), not `accounts.dat`.
+
+## Cursor managed login
+
+Cursor has two credential sources:
+
+- Local Cursor reads `cursorAuth/accessToken` from the editor’s `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` and builds the `WorkosCursorSessionToken` cookie.
+- A Pulse-managed Cursor account opens `https://cursor.com/loginDeepControl` with `redirectTarget=cli`, polls `https://api2.cursor.sh/auth/poll`, and builds the same cookie from the returned JWT. It does not require Cursor or `state.vscdb` to exist.
+
+The poll treats 404 as pending, a 403 with an explicit error as provider refusal, and transient failures as retryable. It accepts both camelCase and snake_case token fields, requires a JWT `exp`, and uses `userId`, `authId`, or `sub` only when present.
+
+The reference client exposes `exchange_user_api_key`, but the repository investigation did not establish that endpoint as a browser-login refresh contract. Pulse therefore saves a returned refresh token for future compatibility but does not call it. When the JWT expires, the managed account reports reauthentication required and the user reconnects it.
 
 ## Grok Bot extras — Cursor web login, not OAuth
 

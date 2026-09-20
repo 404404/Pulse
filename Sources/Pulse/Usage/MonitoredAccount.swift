@@ -1,5 +1,24 @@
 import Foundation
 
+enum AccountAuthenticationSource: String, Codable, Sendable {
+    case localApplication
+    case pulseManaged
+
+    var title: String {
+        switch self {
+        case .localApplication: String.localized("Local application login")
+        case .pulseManaged: String.localized("Pulse-managed login")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .localApplication: String.localized("Uses the provider's saved login. Pulse will not change it.")
+        case .pulseManaged: String.localized("Connected directly in Pulse and stored separately from the provider's login.")
+        }
+    }
+}
+
 /// One thing the rail shows a ring for.
 ///
 /// A provider used to be the identity: one ring, one card, one settings pane
@@ -34,6 +53,15 @@ struct AccountKey: Hashable, Codable, Sendable, Identifiable {
     /// Whether this is the account read from the tool's own login rather than
     /// one Pulse signed in to itself.
     var isPrimary: Bool { slot.isEmpty }
+
+    /// Where the credential for this account comes from.
+    ///
+    /// Provider and credential source are deliberately separate: Codex, Grok
+    /// and Cursor can each have a local application account and Pulse-managed
+    /// accounts at the same time.
+    var authenticationSource: AccountAuthenticationSource {
+        isPrimary ? .localApplication : .pulseManaged
+    }
 
     init?(id: String) {
         let parts = id.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -142,6 +170,16 @@ struct ExtraAccount: Codable, Hashable, Identifiable, Sendable {
 }
 
 extension Provider {
+    /// Whether Pulse can obtain and hold a login for this provider.
+    var supportsPulseManagedLogin: Bool {
+        switch self {
+        case .codex, .grok, .cursor: true
+        case .claudeCode, .antigravity, .openCodeGo, .kimiCode, .ollamaCloud,
+             .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .grokBot,
+             .volcengine, .commandCode, .deepSeek, .devin, .xiaomiMiMo: false
+        }
+    }
+
     /// Whether Pulse can watch more than one account of this provider.
     ///
     /// Only the ones it can sign in to itself. The others are read from a
@@ -153,12 +191,8 @@ extension Provider {
         // Grok Bot is signed in to through Cursor's own login page rather
         // than by OAuth — a second allowance is a second Cursor account. See
         // `CursorWebLogin`.
-        case .claudeCode, .codex, .grok, .grokBot: true
-        // **Cursor itself is not on this list, and that is not an oversight.**
-        // The same sign-in would work, but Cursor's usage summary is read
-        // from the editor's own stored login and a second account has no
-        // editor behind it. Grok Bot needs nothing but the token.
-        case .antigravity, .cursor, .openCodeGo, .kimiCode, .ollamaCloud,
+        case .claudeCode, .codex, .grok, .cursor, .grokBot: true
+        case .antigravity, .openCodeGo, .kimiCode, .ollamaCloud,
              .zai, .glmCoding, .minimax, .minimaxCN, .copilot, .volcengine,
              .commandCode, .deepSeek, .devin, .xiaomiMiMo: false
         }

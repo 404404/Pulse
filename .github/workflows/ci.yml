@@ -112,3 +112,15 @@ jobs:
           done
           echo "Version: $(defaults read "$PWD/$APP/Contents/Info.plist" CFBundleShortVersionString)"
           echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/Pulse")"
+
+      # Package the exact validation build so a manual CI run produces a DMG that can be installed locally.
+      - name: Package validation DMG
+        run: ./Scripts/dmg.sh
+
+      - name: Upload validation DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pulse-validation-dmg
+          path: "build.noindex/Pulse-*.dmg"
+          if-no-files-found: error
+          retention-days: 7

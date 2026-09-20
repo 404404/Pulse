@@ -48,14 +48,11 @@ enum CursorAppLogin {
     /// the reader rather than being written a second time.
     static func session(from token: String) -> Session? {
         guard
-            let claims = claims(in: token),
-            let subject = claims["sub"] as? String,
-            let expiry = claims["exp"] as? Double,
-            Date(timeIntervalSince1970: expiry).timeIntervalSinceNow > expiryHeadroom,
-            // "auth0|user_abc" — the account id is the half after the bar, and
-            // a subject with no bar in it is already the id.
+            let subject = accountID(of: token),
             let account = subject.split(separator: "|").last.map(String.init),
-            !account.isEmpty
+            !account.isEmpty,
+            let expiry = expiry(of: token),
+            expiry.timeIntervalSinceNow > expiryHeadroom
         else { return nil }
 
         // `%3A%3A` is `::` encoded, which is how the value appears in the
@@ -68,7 +65,14 @@ enum CursorAppLogin {
     /// is why an account Pulse signs in to here does not need renewing every
     /// few hours the way a Codex or Claude Code login does.
     static func expiry(of token: String) -> Date? {
-        (claims(in: token)?["exp"] as? Double).map(Date.init(timeIntervalSince1970:))
+        guard let value = claims(in: token)?["exp"] as? NSNumber else { return nil }
+        return Date(timeIntervalSince1970: value.doubleValue)
+    }
+
+    /// The stable subject used to identify a Pulse-managed Cursor account.
+    static func accountID(of token: String) -> String? {
+        guard let subject = claims(in: token)?["sub"] as? String, !subject.isEmpty else { return nil }
+        return subject
     }
 
     /// Whether a token is stored at all, as against a *usable* one.

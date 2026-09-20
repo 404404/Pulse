@@ -4,6 +4,14 @@ Service: [`CodexUsageService.swift`](../../Sources/Pulse/Providers/CodexUsageSer
 
 `keepsLocalTranscripts` is true. Extra accounts are supported. Source choice: endpoint vs `codex app-server`.
 
+## Authentication sources
+
+The primary account is **Local Codex**. Pulse reads `~/.codex/auth.json` and may fall back to `codex app-server`; this path remains the default and is never replaced by a Pulse connection.
+
+**Connect ChatGPT account** creates a Pulse-managed Codex account through the existing OpenAI device authorization flow. Its credentials live in encrypted `accounts.dat`, are fetched independently, and can be refreshed by Pulse. Removing that account does not edit `~/.codex/auth.json` or sign out the Codex CLI.
+
+The two account types can be enabled together: the local account keeps its original `AccountKey`, while each Pulse-managed account has its own added-account key.
+
 ## Routes (primary)
 
 Default `.automatic`:
