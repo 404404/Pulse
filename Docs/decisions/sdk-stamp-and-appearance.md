@@ -44,7 +44,9 @@ difference for a while during this diagnosis.
 Xcode produced the same wrong stamp and never touches that script, and a
 developer chasing what looks like a UI regression would be chasing a build
 artefact. So the stamp is a `linkerSettings` flag in `Package.swift`, which
-every build path shares.
+every build path shares — confirmed on 2026-09-20 by running the package from
+Xcode after the change and finding the current design, the one case the
+bundler could not have fixed.
 
 It states **26.0**, the floor this app already requires — `glassEffect` needs
 that SDK to compile even behind `#available` — rather than whichever SDK is
