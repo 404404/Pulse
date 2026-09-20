@@ -650,6 +650,21 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                     .disabled(!settings.isPanelVisible)
                 }
+
+                SettingsRowDivider()
+
+                SettingsRow(
+                    String.localized("Ring activity animation"),
+                    subtitle: String.localized("The turning mark for a working CLI or a reading being fetched. Off leaves the ring still.")
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { settings.animatesRingActivity },
+                        set: { settings.animatesRingActivity = $0 }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!settings.isPanelVisible)
+                }
             }
 
             SettingsGroup(String.localized("Notifications")) {

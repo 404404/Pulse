@@ -80,6 +80,8 @@
 "Where a ring stops being amber. A spent limit is red whatever this says." = "Where a ring stops being amber. A spent limit is red whatever this says.";
 "Alert colour when docked" = "Alert colour when docked";
 "Off keeps the collapsed rail neutral even when a limit needs attention." = "Off keeps the collapsed rail neutral even when a limit needs attention.";
+"Ring activity animation" = "Ring activity animation";
+"The turning mark for a working CLI or a reading being fetched. Off leaves the ring still." = "The turning mark for a working CLI or a reading being fetched. Off leaves the ring still.";
 "Percentages at the side" = "Percentages at the side";
 "The figure under each ring, docked left or right." = "The figure under each ring, docked left or right.";
 "Time until reset" = "Time until reset";
