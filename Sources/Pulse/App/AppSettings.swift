@@ -527,6 +527,33 @@ final class AppSettings {
         }
     }
 
+    /// Whether the rail's ends are half circles taken from the ring, rather
+    /// than softened corners of their own.
+    ///
+    /// Off by default, which is the rail as it has always been drawn: 26pt
+    /// superellipse corners and a flatter 24 x 38 flare into the screen edge.
+    /// On, one circle sets every curve on the panel — each end becomes a half
+    /// circle of half the rail, the flare is that same circle turned inside
+    /// out so the two meet as a single S-curve, and the card's tail leaves
+    /// the card along its edge instead of at an angle.
+    ///
+    /// One switch rather than three, because the three are one idea. Split up
+    /// they would let a round end sit on the old end padding, which puts the
+    /// first ring hard against the curve it is supposed to be centred in.
+    ///
+    /// Set on `PanelMetrics` before the change is announced, like the other
+    /// rail metrics: the two styles sit the end ring differently, so the rail
+    /// is 16pt longer with round ends and whoever reacts is about to measure
+    /// it.
+    var usesRoundEnds: Bool {
+        didSet {
+            guard usesRoundEnds != oldValue else { return }
+            PanelMetrics.useRoundEnds(usesRoundEnds)
+            UserDefaults.standard.set(usesRoundEnds, forKey: Key.usesRoundEnds)
+            onChange?()
+        }
+    }
+
     /// Whether each ring also shows how far through its window the clock is.
     ///
     /// Off by default. It is a genuinely useful second reading — 80% spent a
@@ -881,6 +908,7 @@ final class AppSettings {
         topRailShowsPercentages: Bool = false,
         sideRailShowsPercentages: Bool = true,
         labelAboveRing: Bool = false,
+        usesRoundEnds: Bool = false,
         showsWindowClock: Bool = false,
         showsRemaining: Bool = false,
         warningThreshold: WarningThreshold = .default,
@@ -925,6 +953,7 @@ final class AppSettings {
         self.topRailShowsPercentages = topRailShowsPercentages
         self.sideRailShowsPercentages = sideRailShowsPercentages
         self.labelAboveRing = labelAboveRing
+        self.usesRoundEnds = usesRoundEnds
         self.showsWindowClock = showsWindowClock
         self.showsRemaining = showsRemaining
         self.warningThreshold = warningThreshold
@@ -1188,6 +1217,7 @@ final class AppSettings {
             topRailShowsPercentages: defaults.object(forKey: Key.topRailShowsPercentages) as? Bool ?? false,
             sideRailShowsPercentages: defaults.object(forKey: Key.sideRailShowsPercentages) as? Bool ?? true,
             labelAboveRing: defaults.object(forKey: Key.labelAboveRing) as? Bool ?? false,
+            usesRoundEnds: defaults.object(forKey: Key.usesRoundEnds) as? Bool ?? false,
             showsWindowClock: defaults.object(forKey: Key.showsWindowClock) as? Bool ?? false,
             showsRemaining: defaults.object(forKey: Key.showsRemaining) as? Bool ?? false,
             warningThreshold: (defaults.object(forKey: Key.warningThreshold) as? Int)
@@ -1213,6 +1243,7 @@ final class AppSettings {
         PanelMetrics.showTopPercentages(settings.topRailShowsPercentages)
         PanelMetrics.showSidePercentages(settings.sideRailShowsPercentages)
         PanelMetrics.putLabelAboveRing(settings.labelAboveRing)
+        PanelMetrics.useRoundEnds(settings.usesRoundEnds)
         PanelMetrics.showForecast(settings.showsForecast)
         PanelMetrics.makeRoom(for: settings.railSlotCount)
         return settings
@@ -1304,6 +1335,7 @@ final class AppSettings {
         static let topRailShowsPercentages = "settings.topRailShowsPercentages"
         static let sideRailShowsPercentages = "settings.sideRailShowsPercentages"
         static let labelAboveRing = "settings.labelAboveRing"
+        static let usesRoundEnds = "settings.usesRoundEnds"
         static let showsWindowClock = "settings.showsWindowClock"
         static let botMarks = "settings.botMarks"
         static let botPersonas = "settings.botPersonas"

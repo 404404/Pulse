@@ -264,6 +264,8 @@
 /* Panel size */
 "Size" = "全体のサイズ";
 "Spacing" = "間隔";
+"Round ends" = "端を真円に";
+"The rail's ends and the card's tail follow the ring's own curve." = "レールの両端とカードの尾が、リングと同じ弧を描きます。";
 "How much air there is between the rings." = "リングどうしの間隔を調整します。";
 "Tight" = "狭い";
 "Loose" = "広い";

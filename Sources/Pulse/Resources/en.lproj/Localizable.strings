@@ -264,6 +264,8 @@
 /* Panel size */
 "Size" = "Size";
 "Spacing" = "Spacing";
+"Round ends" = "Round ends";
+"The rail's ends and the card's tail follow the ring's own curve." = "The rail's ends and the card's tail follow the ring's own curve.";
 "How much air there is between the rings." = "How much air there is between the rings.";
 "Tight" = "Tight";
 "Loose" = "Loose";

@@ -32,10 +32,45 @@ PUBLIC_KEY="$(tr -d '[:space:]' < Scripts/sparkle-public-key.txt)"
 
 echo "Building Pulse $VERSION (universal)…"
 
+# macOS picks which design an app gets from the SDK version recorded in its
+# binary's LC_BUILD_VERSION, not from the version it is running on. Below 26 it
+# draws the pre-Tahoe controls, and no Info.plist key opts back in. Liquid
+# Glass (`glassEffect`) needs the same SDK to compile at all.
+#
+# The stamp itself is set in Package.swift, so that every way of building this
+# package agrees — including running it from Xcode, which does not come
+# through here. What this script adds is the check: read the stamp back off
+# every slice after linking and refuse to package anything below 26.
+#
+# That check is here rather than left to the flag because the failure is
+# silent. SwiftPM stamped the deployment target into that field under one
+# toolchain and the real SDK under the previous one, with no error either way
+# — what shipped was simply an app drawn the old way, which no build log and
+# no test would have caught. See Docs/decisions/sdk-stamp-and-appearance.md.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+
+if [ "${SDK_VERSION%%.*}" -lt 26 ]; then
+    echo "Need the macOS 26 SDK or newer to build a release; found $SDK_VERSION." >&2
+    echo "Point xcode-select at an Xcode that ships it." >&2
+    exit 1
+fi
+
+echo "  SDK $SDK_VERSION"
+
 # Both architectures, so the same download runs on Apple Silicon and Intel.
 swift build -c release --arch arm64 --arch x86_64
 
 BUILT="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+
+for arch in arm64 x86_64; do
+    stamped="$(otool -arch "$arch" -l "$BUILT/Pulse" \
+        | awk '/LC_BUILD_VERSION/{f=1} f&&/^ *sdk /{print $2; exit}')"
+    if [ -z "$stamped" ] || [ "${stamped%%.*}" -lt 26 ]; then
+        echo "The $arch slice records sdk ${stamped:-none}, so macOS would draw it the old way." >&2
+        echo "Package.swift's linkerSettings are no longer taking effect." >&2
+        exit 1
+    fi
+done
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
